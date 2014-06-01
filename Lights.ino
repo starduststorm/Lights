@@ -6,6 +6,11 @@
 // Since delay is constant across modes, this won't change from calm to frantic suddenly
 // Majority of LEDs should be on at all times to avoid not lighting area enough
 
+#define SERIAL_LOGGING 0
+
+#define MIN(x, y) ((x) > (y) ? y : x)
+#define MAX(x, y) ((x) < (y) ? y : x)
+
 static const unsigned int LED_COUNT = 50;
 
 struct Color {
@@ -15,6 +20,7 @@ struct Color {
 };
 typedef struct Color Color;
 
+static const Color kBlackColor = (Color){0, 0, 0};
 static const Color kRedColor = (Color){0xFF, 0, 0};
 static const Color kOrangeColor = (Color){0xFF, 0x60, 0x0};
 static const Color kYellowColor = (Color){0xFF, 0xFF, 0};
@@ -23,6 +29,7 @@ static const Color kCyanColor = (Color){0, 0xFF, 0xFF};
 static const Color kBlueColor = (Color){0, 0, 0xFF};
 static const Color kVioletColor = (Color){0x8E, 0x25, 0xFB};
 static const Color kMagentaColor = (Color){0xFF, 0, 0xFF};
+static const Color kWhiteColor = (Color){0xFF, 0xFF, 0xFF};
 
 static struct Color MakeColor(byte r, byte g, byte b)
 {
@@ -38,13 +45,34 @@ static bool ColorIsEqualToColor(Color c1, Color c2)
   return (c1.red == c2.red && c1.green == c2.green && c1.blue == c2.blue);
 }
 
+// Transition and intensity are both in the range 0-100
+Color ColorWithInterpolatedColors(Color c1, Color c2, unsigned int transition, unsigned int intensity)
+{
+  byte r, g, b;
+  r = (MAX(c2.red - c1.red, 0) * transition / 100 + c1.red) * intensity / 100;
+  g = (MAX(c2.green - c1.green, 0) * transition / 100 + c1.green) * intensity / 100;
+  b = (MAX(c2.blue - c1.blue, 0) * transition / 100 + c1.blue) * intensity / 100;
+  return MakeColor(r, g, b);
+}
+
+#if SERIAL_LOGGING
+void PrintColor(Color c)
+{
+  Serial.print("(");
+  Serial.print(c.red);
+  Serial.print(", ");
+  Serial.print(c.green);
+  Serial.print(", ");
+  Serial.print(c.blue);
+  Serial.print(")");
+}
+#endif
+
 typedef enum {
-  BMModeFollow,
+  BMModeFollow = 0,
+  BMModeFire,
   BMModeCount,
 } BMMode;
-
-#define MIN(x, y) ((x) > (y) ? y : x);
-#define MAX(x, y) ((x) < (y) ? y : x);
 
 class BMLight {
 public:
@@ -60,6 +88,9 @@ public:
   void transitionToColor(Color targetColor, float rate);
   void transitionTick(unsigned long millis, unsigned int frameDuration);
   bool isTransitioning();
+#if SERIAL_LOGGING
+  void printDescription();
+#endif
   
   int modeState; // For the Scene mode to use to store state
 };
@@ -70,6 +101,9 @@ BMLight::BMLight() : transitionRate(0)
 
 void BMLight::transitionToColor(Color transitionTargetColor, float rate)
 {
+  if (rate <= 0) {
+    rate = 1;
+  }
   targetColor = transitionTargetColor;
   originalColor = color;
   transitionRate = rate;
@@ -78,7 +112,7 @@ void BMLight::transitionToColor(Color transitionTargetColor, float rate)
 
 void BMLight::transitionTick(unsigned long millis, unsigned int frameDuration)
 {
-  if (transitionRate > 0) {
+  if (transitionRate > 0 && millis > 0) {
     transitionProgress = MIN(transitionProgress + (millis / (float)frameDuration) * transitionRate / 100, 1.0);
     
     color.red = originalColor.red + transitionProgress * (targetColor.red - originalColor.red);
@@ -95,6 +129,19 @@ bool BMLight::isTransitioning()
 {
   return (transitionRate != 0);
 }
+
+#if SERIAL_LOGGING
+void BMLight::printDescription()
+{
+  char buf[20];
+  sprintf(buf, "%p", this);
+  Serial.print("<Light ");
+  Serial.print(buf);
+  Serial.print(" isTransitioning = ");
+  Serial.print(isTransitioning() ? "yes" : "no");
+  Serial.print(">");
+}
+#endif
 
 #pragma mark - 
 
@@ -129,7 +176,7 @@ public:
 void BMScene::updateStrand()
 {
   TCL.sendEmptyFrame();
-  for (int i=0; i<LED_COUNT; i++) {
+  for (int i = 0; i < _lightCount; ++i) {
     TCL.sendColor(_lights[i].color.red, _lights[i].color.green, _lights[i].color.blue);
   }
   TCL.sendEmptyFrame();
@@ -170,6 +217,7 @@ void BMScene::setMode(BMMode mode)
       _followLeader = 0;
       break;
   }
+  _modeStart = millis();
 }
 
 void BMScene::tick()
@@ -191,6 +239,32 @@ void BMScene::tick()
         }
         break;
       }
+      
+      case BMModeFire: {
+        // Interpolate, fade, and snap between two colors
+        Color c1 = MakeColor(0xFF, 0x30, 0);
+        Color c2 = MakeColor(0xFF, 0x80, 0);
+        for (int i = 0; i < _lightCount; ++i) {
+          if (!(_lights[i].isTransitioning())) {
+            long choice = random(100);
+            
+            if (choice < 10) {
+              // 10% of the time, fade slowly to black
+              _lights[i].transitionToColor(kBlackColor, 20);
+            } else {
+              // Otherwise, fade or snap to another color
+              Color color2 = (random(2) ? c1 : c2);
+              if (choice < 95) {
+                Color mixedColor = ColorWithInterpolatedColors(_lights[i].color, color2, random(101), random(101));
+                _lights[i].transitionToColor(mixedColor, 40);
+              } else {
+                _lights[i].color = color2;
+              }
+            }
+          }
+        }
+        break;
+      }
       default: // Turn all off
         applyAll(0, 0, 0);
         break;
@@ -205,6 +279,10 @@ void BMScene::tick()
   
   updateStrand();
   _lastTick = time;
+  
+  if (time - _modeStart > 30 * 1000) {
+    setMode((BMMode)((_mode + 1) % BMModeCount));
+  }
 }
 
 static BMScene *gLights;
@@ -213,6 +291,10 @@ void setup()
 {
   TCL.begin();
   
+#if SERIAL_LOGGING
+  Serial.begin(9600);
+#endif
+
   gLights = new BMScene(LED_COUNT);
   gLights->setMode(BMModeFollow);
   gLights->frameDuration = 100;
