@@ -69,8 +69,9 @@ void PrintColor(Color c)
 #endif
 
 typedef enum {
-  BMModeFollow = 0,
+  BMModeFollow = 1,
   BMModeFire,
+  BMModeLightningBugs,
   BMModeCount,
 } BMMode;
 
@@ -159,7 +160,8 @@ private:
   int _followLeader;
   unsigned int _followColor;
   
-  void applyAll(byte r, byte g, byte b);
+  void applyAll(Color c);
+  void transitionAll(Color c, float rate);
   
   void updateStrand();
 public:
@@ -184,10 +186,17 @@ void BMScene::updateStrand()
 
 #pragma mark - Convenience
 
-void BMScene::applyAll(byte r, byte g, byte b)
+void BMScene::applyAll(Color c)
 {
   for (int i = 0; i < _lightCount; ++i) {
-    _lights[i].color = MakeColor(r, g, b);
+    _lights[i].color = c;
+  }
+}
+
+void BMScene::transitionAll(Color c, float rate)
+{
+  for (int i = 0; i < _lightCount; ++i) {
+    _lights[i].transitionToColor(c, rate);
   }
 }
 
@@ -200,24 +209,44 @@ BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)0), frameDuration(100)
   _lastTick = millis();
   _lastFrame = _lastTick;
   
-  applyAll(0, 0, 0);
+  applyAll(kBlackColor);
 }
 
 BMScene::~BMScene()
 {
 }
 
+static const Color kNightColor = MakeColor(0, 0, 0x10);
+
 void BMScene::setMode(BMMode mode)
 {
-  _mode = mode;
-  
-  switch (_mode) {
-    case BMModeFollow:
-      _followColor = 0;
-      _followLeader = 0;
-      break;
+  if (mode != _mode) {
+    // Transition away from old mode
+    switch (_mode) {
+      case BMModeLightningBugs:
+        // When ending lightning bugs, have all the bugs go out
+        transitionAll(kNightColor, 10);
+        break;
+    }
+    
+    _mode = mode;
+    
+    // Initialize new mode
+    for (int i = 0; i < _lightCount; ++i) {
+      _lights[i].modeState = 0;
+    }
+    
+    switch (_mode) {
+      case BMModeFollow:
+        _followColor = 0;
+        _followLeader = 0;
+        break;
+      case BMModeLightningBugs:
+        transitionAll(kNightColor, 10);
+        break;
+    }
+    _modeStart = millis();
   }
-  _modeStart = millis();
 }
 
 void BMScene::tick()
@@ -265,8 +294,33 @@ void BMScene::tick()
         }
         break;
       }
+      
+      case BMModeLightningBugs: {
+        for (int i = 0; i < _lightCount; ++i) {
+          if (!_lights[i].isTransitioning()) {
+            switch (_lights[i].modeState) {
+              case 1:
+                // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
+                _lights[i].transitionToColor(kBlackColor, 20);
+                _lights[i].modeState = 2;
+                break;
+              case 2:
+                _lights[i].transitionToColor(kNightColor, 20);
+                break;
+              default:
+                if (random(100) == 0) {
+                  // Blinky blinky
+                  _lights[i].transitionToColor(MakeColor(0xD0, 0xFF, 0), 30);
+                  _lights[i].modeState = 1;
+                }
+                break;
+            }
+          }
+        }
+        break;
+      }
       default: // Turn all off
-        applyAll(0, 0, 0);
+        applyAll(kBlackColor);
         break;
     }
     _lastFrame = time;
