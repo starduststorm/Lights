@@ -154,7 +154,7 @@ private:
   unsigned long _lastTick;
   unsigned long _lastFrame;
   
-  BMLight *_lights;
+  BMLight **_lights;
   
   // Mode specific data
   int _followLeader;
@@ -179,7 +179,8 @@ void BMScene::updateStrand()
 {
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
-    TCL.sendColor(_lights[i].color.red, _lights[i].color.green, _lights[i].color.blue);
+    BMLight *light = _lights[i];
+    TCL.sendColor(light->color.red, light->color.green, light->color.blue);
   }
   TCL.sendEmptyFrame();
 }
@@ -189,14 +190,14 @@ void BMScene::updateStrand()
 void BMScene::applyAll(Color c)
 {
   for (int i = 0; i < _lightCount; ++i) {
-    _lights[i].color = c;
+    _lights[i]->color = c;
   }
 }
 
 void BMScene::transitionAll(Color c, float rate)
 {
   for (int i = 0; i < _lightCount; ++i) {
-    _lights[i].transitionToColor(c, rate);
+    _lights[i]->transitionToColor(c, rate);
   }
 }
 
@@ -205,7 +206,10 @@ void BMScene::transitionAll(Color c, float rate)
 BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)0), frameDuration(100)
 {
   _lightCount = lightCount;
-  _lights = new BMLight[_lightCount];
+  _lights = new BMLight*[_lightCount];
+  for (int i = 0; i < _lightCount; ++i) {
+    _lights[i] = new BMLight();
+  }
   _lastTick = millis();
   _lastFrame = _lastTick;
   
@@ -233,7 +237,7 @@ void BMScene::setMode(BMMode mode)
     
     // Initialize new mode
     for (int i = 0; i < _lightCount; ++i) {
-      _lights[i].modeState = 0;
+      _lights[i]->modeState = 0;
     }
     
     switch (_mode) {
@@ -260,7 +264,7 @@ void BMScene::tick()
       case BMModeFollow: {
         Color colors[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
         
-        _lights[_followLeader].transitionToColor(colors[_followColor], 5);
+        _lights[_followLeader]->transitionToColor(colors[_followColor], 5);
         _followLeader = (_followLeader + 1);
         if (_followLeader >= _lightCount) {
           _followLeader = _followLeader % _lightCount;
@@ -274,20 +278,21 @@ void BMScene::tick()
         Color c1 = MakeColor(0xFF, 0x30, 0);
         Color c2 = MakeColor(0xFF, 0x80, 0);
         for (int i = 0; i < _lightCount; ++i) {
-          if (!(_lights[i].isTransitioning())) {
+          BMLight *light = _lights[i];
+          if (!(light->isTransitioning())) {
             long choice = random(100);
             
             if (choice < 10) {
               // 10% of the time, fade slowly to black
-              _lights[i].transitionToColor(kBlackColor, 20);
+              light->transitionToColor(kBlackColor, 20);
             } else {
               // Otherwise, fade or snap to another color
               Color color2 = (random(2) ? c1 : c2);
               if (choice < 95) {
-                Color mixedColor = ColorWithInterpolatedColors(_lights[i].color, color2, random(101), random(101));
-                _lights[i].transitionToColor(mixedColor, 40);
+                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, random(101), random(101));
+                light->transitionToColor(mixedColor, 40);
               } else {
-                _lights[i].color = color2;
+                light->color = color2;
               }
             }
           }
@@ -297,21 +302,22 @@ void BMScene::tick()
       
       case BMModeLightningBugs: {
         for (int i = 0; i < _lightCount; ++i) {
-          if (!_lights[i].isTransitioning()) {
-            switch (_lights[i].modeState) {
+          BMLight *light = _lights[i];
+          if (!light->isTransitioning()) {
+            switch (light->modeState) {
               case 1:
                 // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-                _lights[i].transitionToColor(kBlackColor, 20);
-                _lights[i].modeState = 2;
+                light->transitionToColor(kBlackColor, 20);
+                light->modeState = 2;
                 break;
               case 2:
-                _lights[i].transitionToColor(kNightColor, 20);
+                light->transitionToColor(kNightColor, 20);
                 break;
               default:
                 if (random(100) == 0) {
                   // Blinky blinky
-                  _lights[i].transitionToColor(MakeColor(0xD0, 0xFF, 0), 30);
-                  _lights[i].modeState = 1;
+                  light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 30);
+                  light->modeState = 1;
                 }
                 break;
             }
@@ -319,6 +325,7 @@ void BMScene::tick()
         }
         break;
       }
+      
       default: // Turn all off
         applyAll(kBlackColor);
         break;
@@ -328,7 +335,7 @@ void BMScene::tick()
   
   // Fade transitions
   for (int i = 0; i < _lightCount; ++i) {
-    _lights[i].transitionTick(tickTime, frameDuration);
+    _lights[i]->transitionTick(tickTime, frameDuration);
   }
   
   updateStrand();
@@ -343,6 +350,7 @@ static BMScene *gLights;
 
 void setup()
 {
+  randomSeed(millis());
   TCL.begin();
   
 #if SERIAL_LOGGING
