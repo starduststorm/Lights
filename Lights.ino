@@ -7,7 +7,7 @@
 // Majority of LEDs should be on at all times to avoid not lighting area enough
 
 #define SERIAL_LOGGING 0
-#define TRANSITION_TIME (60)
+#define TRANSITION_TIME (30)
 
 #define MIN(x, y) ((x) > (y) ? y : x)
 #define MAX(x, y) ((x) < (y) ? y : x)
@@ -50,7 +50,7 @@ static bool ColorIsEqualToColor(Color c1, Color c2)
 }
 
 // Transition and intensity are both in the range 0-100
-Color ColorWithInterpolatedColors(Color c1, Color c2, unsigned int transition, unsigned int intensity)
+static Color ColorWithInterpolatedColors(Color c1, Color c2, unsigned int transition, unsigned int intensity)
 {
   byte r, g, b;
   r = (((float)c2.red - c1.red) * transition / 100 + c1.red) * intensity / 100;
@@ -83,6 +83,23 @@ typedef enum {
   BMModeBounce,
   BMModeTest,
 } BMMode;
+
+struct DelayRange {
+  unsigned int low;
+  unsigned int high;
+};
+typedef struct DelayRange DelayRange;
+
+static struct DelayRange MakeDelayRange(unsigned int low, unsigned int high)
+{
+  DelayRange r;
+  r.low = low;
+  r.high = high;
+  return r;
+}
+static const DelayRange kDelayRangeAll = (DelayRange){0, 1000};
+
+static DelayRange kModeRanges[BMModeCount] = {0};
 
 class BMLight {
 public:
@@ -178,11 +195,13 @@ private:
   void transitionAll(Color c, float rate);
   
   void updateStrand();
+  DelayRange rangeForMode(BMMode mode);
 public:
   void tick();
   BMScene(unsigned int ledCount);
   void setMode(BMMode mode);
   ~BMScene();
+  BMMode randomMode();
   
   unsigned int frameDuration; // millisecond delay between frames
 };
@@ -236,6 +255,12 @@ void BMScene::transitionAll(Color c, float rate)
 
 BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100)
 {
+  kModeRanges[BMModeFollow] = kDelayRangeAll;
+  kModeRanges[BMModeFire] = MakeDelayRange(50, 200);
+  kModeRanges[BMModeBlueFire] = MakeDelayRange(50, 200);
+  kModeRanges[BMModeLightningBugs] = MakeDelayRange(40, 200);
+  kModeRanges[BMModeWaves] = MakeDelayRange(50, 200);
+  
   _lightCount = lightCount;
   _lights = new BMLight*[_lightCount];
   for (int i = 0; i < _lightCount; ++i) {
@@ -251,7 +276,29 @@ BMScene::~BMScene()
 {
 }
 
+DelayRange BMScene::rangeForMode(BMMode mode)
+{
+  if (mode < ARRAY_SIZE(kModeRanges)) {
+    return kModeRanges[mode];
+  }
+  return kDelayRangeAll;
+}
+
 static const Color kNightColor = MakeColor(0, 0, 0x10);
+static BMScene *gLights;
+
+BMMode BMScene::randomMode()
+{
+  BMMode newMode;
+  while (1) {
+    newMode = (BMMode)random(BMModeCount);
+    DelayRange range = rangeForMode(newMode);
+    if (frameDuration >= range.low && frameDuration <= range.high) {
+      break;
+    }
+  }
+  return newMode;
+}
 
 void BMScene::setMode(BMMode mode)
 {
@@ -435,24 +482,32 @@ void BMScene::tick()
   _lastTick = time;
   
   if (time - _modeStart > TRANSITION_TIME * 1000) {
-    setMode((BMMode)random(BMModeCount));
+    setMode(randomMode());
+  }
+  unsigned int newFrameDuration = (analogRead(TCL_POT2) + 100) / 10.; // Potentiometer has range [0, 1023], map to [10, 112]
+  if (newFrameDuration != gLights->frameDuration) {
+    gLights->frameDuration = newFrameDuration;
+    // Switch out of modes that are too slow or fast for the new frameDuration
+    DelayRange range = rangeForMode(_mode);
+    if (newFrameDuration < range.low || newFrameDuration > range.high) {
+      setMode(randomMode());
+    }
   }
 }
-
-static BMScene *gLights;
 
 void setup()
 {
   randomSeed(analogRead(0));
   TCL.begin();
+  TCL.setupDeveloperShield();
   
 #if SERIAL_LOGGING
   Serial.begin(9600);
 #endif
   
   gLights = new BMScene(LED_COUNT);
-  gLights->setMode(BMModeFollow);
-  gLights->frameDuration = 50;
+  gLights->setMode(gLights->randomMode());
+  gLights->frameDuration = 100;
 }
 
 void loop()
