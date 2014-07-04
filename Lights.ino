@@ -81,7 +81,6 @@ typedef enum {
   BMModeWaves,
   BMModeCount,
   BMModeBounce,
-  BMModeTest,
 } BMMode;
 
 struct DelayRange {
@@ -329,10 +328,6 @@ void BMScene::setMode(BMMode mode)
         transitionAll(fillColor, 5);
         // intentional fall-through
       }
-      case BMModeTest:
-        _followColorIndex = random(ARRAY_SIZE(RGBRainbow));
-        _followLeader = 0;
-        break;
       case BMModeLightningBugs:
         transitionAll(kNightColor, 10);
         break;
@@ -418,21 +413,6 @@ void BMScene::tick()
             }
           }
         }
-        break;
-      }
-      
-      case BMModeTest: {
-        const int width = 10;
-        const int count = _lightCount / 25;
-        for (int i = 0; i < count; ++i) {
-          int lead = (_followLeader + i * _lightCount / count) % _lightCount;
-          _lights[lead]->transitionToColor(_followColor, 200 / width);
-          _lights[(lead + _lightCount - width / 2) % _lightCount]->transitionToColor(kBlackColor, 200 / width);
-        }
-        _followLeader = (_followLeader + 1) % _lightCount;
-        _followColor.red += 5;
-        _followColor.green += 4;
-        _followColor.blue += 3;
         break;
       }
       
