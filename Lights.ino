@@ -8,10 +8,12 @@
 
 #define SERIAL_LOGGING 0
 #define TRANSITION_TIME (30)
+//#define TEST_MODE (BMModeInterferringWaves)
 
 #define MIN(x, y) ((x) > (y) ? y : x)
 #define MAX(x, y) ((x) < (y) ? y : x)
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+#define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 
 static const unsigned int LED_COUNT = 50;
 
@@ -34,6 +36,7 @@ static const Color kMagentaColor = (Color){0xFF, 0, 0xFF};
 static const Color kWhiteColor = (Color){0xFF, 0xFF, 0xFF};
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
+Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor, kWhiteColor};
 
 static struct Color MakeColor(byte r, byte g, byte b)
 {
@@ -79,6 +82,7 @@ typedef enum {
   BMModeBlueFire,
   BMModeLightningBugs,
   BMModeWaves,
+  BMModeInterferringWaves,
   BMModeCount,
   BMModeBounce,
 } BMMode;
@@ -181,12 +185,21 @@ private:
   
   BMLight **_lights;
   
-  // Mode specific data
+  // Mode specific options
   float _frameDurationMultiplier;
+  bool _curveBlackIntensity;
+  int _automaticColorsCount;
+  
+  // Mode specific data
   int _followLeader;
+  float _smoothLeader;
   Color _followColor;
   unsigned int _followColorIndex;
-  bool _curveBlackIntensity;
+  
+  Color *_automaticColors;
+  Color *_automaticColorsTargets;
+  float *_automaticColorsProgress;
+  
   float _transitionProgress;
   Color _targetColor;
   
@@ -195,6 +208,7 @@ private:
   
   void updateStrand();
   DelayRange rangeForMode(BMMode mode);
+  Color getAutomaticColor(unsigned int i);
 public:
   void tick();
   BMScene(unsigned int ledCount);
@@ -258,7 +272,8 @@ BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100
   kModeRanges[BMModeFire] = MakeDelayRange(50, 200);
   kModeRanges[BMModeBlueFire] = MakeDelayRange(50, 200);
   kModeRanges[BMModeLightningBugs] = MakeDelayRange(40, 200);
-  kModeRanges[BMModeWaves] = MakeDelayRange(50, 200);
+  kModeRanges[BMModeWaves] = kDelayRangeAll;
+  kModeRanges[BMModeWaves] = kDelayRangeAll;
   
   _lightCount = lightCount;
   _lights = new BMLight*[_lightCount];
@@ -273,6 +288,11 @@ BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100
 
 BMScene::~BMScene()
 {
+}
+
+Color BMScene::getAutomaticColor(unsigned int i)
+{
+  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i] * 100, 100);
 }
 
 DelayRange BMScene::rangeForMode(BMMode mode)
@@ -313,6 +333,13 @@ void BMScene::setMode(BMMode mode)
     _mode = mode;
     _curveBlackIntensity = false;
     _frameDurationMultiplier = 1;
+    _automaticColorsCount = 0;
+    free(_automaticColors);
+    _automaticColors = NULL;
+    free(_automaticColorsTargets);
+    _automaticColorsTargets = NULL;
+    free(_automaticColorsProgress);
+    _automaticColorsProgress = NULL;
     
     // Initialize new mode
     for (int i = 0; i < _lightCount; ++i) {
@@ -331,6 +358,12 @@ void BMScene::setMode(BMMode mode)
       case BMModeLightningBugs:
         transitionAll(kNightColor, 10);
         break;
+      case BMModeInterferringWaves:
+        _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
+        _followLeader = _smoothLeader = 0;
+        _curveBlackIntensity = true;
+        _automaticColorsCount = _lightCount / 10;
+        break;
       case BMModeWaves:
         _curveBlackIntensity = true;
         _followLeader = 0;
@@ -340,6 +373,16 @@ void BMScene::setMode(BMMode mode)
         break;
     }
     _modeStart = millis();
+  }
+  if (_automaticColorsCount > 0) {
+    _automaticColors = (Color *)malloc(_automaticColorsCount * sizeof(Color));
+    _automaticColorsTargets = (Color *)malloc(_automaticColorsCount * sizeof(Color));
+    _automaticColorsProgress = (float *)malloc(_automaticColorsCount * sizeof(float));
+    for (int i = 0; i < _automaticColorsCount; ++i) {
+      _automaticColors[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+      _automaticColorsTargets[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+      _automaticColorsProgress[i] = 0;
+    }
   }
 }
 
@@ -434,7 +477,7 @@ void BMScene::tick()
         if (_transitionProgress == 0 || _transitionProgress >= 1) {
           _transitionProgress = 0;
           _followColor = _targetColor;
-          _targetColor = RGBRainbow[random(ARRAY_SIZE(RGBRainbow))];
+          _targetColor = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
         }
         _transitionProgress += 0.01;
         Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress * 100, 100);
@@ -443,6 +486,52 @@ void BMScene::tick()
           _lights[(_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount]->transitionToColor(kBlackColor, transitionRate);
         }
         _followLeader = (_followLeader + 1) % _lightCount;
+        break;
+      }
+      
+      case BMModeInterferringWaves: {
+        const int waveLength = 12;
+        const float halfWave = waveLength / 2;
+        
+        Color automaticColors[_automaticColorsCount];
+        float leaders[_automaticColorsCount];
+        float halfColors = _automaticColorsCount / 2.0;
+        float lightsChunk = _lightCount / (float)halfColors;
+        for (int c = 0; c < _automaticColorsCount; ++c) {
+          if (c < halfColors) {
+            leaders[c] = _smoothLeader + c * lightsChunk;
+          } else {
+            leaders[c] = _lightCount - (_smoothLeader + c * lightsChunk);
+          }
+          automaticColors[c] = getAutomaticColor(c); // cache
+        }
+        
+        for (int i = 0; i < _lightCount; ++i) {
+          int nearColor1 = -1, nearColor2 = -1; // Find the two colors nearest to this light
+          float nearDistance1 = 1000, nearDistance2 = 1000;
+          for (int c = 0; c < _automaticColorsCount; ++c) {
+            float distance = MOD_DISTANCE(i, leaders[c], _lightCount);
+            if (distance < nearDistance1 && nearDistance2 <= nearDistance1) {
+              nearColor1 = c;
+              nearDistance1 = distance;
+            } else if (distance < nearDistance2) {
+              nearColor2 = c;
+              nearDistance2 = distance;
+            }
+          }
+          if (nearDistance1 < halfWave || nearDistance2 < halfWave) {
+            Color color1 = (nearDistance1 < halfWave ? automaticColors[nearColor1] : automaticColors[nearColor2]);
+            Color color2 = (nearDistance2 < halfWave ? automaticColors[nearColor2] : automaticColors[nearColor1]);
+            
+            nearDistance1 = MIN(nearDistance1, halfWave);
+            nearDistance2 = MIN(nearDistance2, halfWave);
+            Color c = ColorWithInterpolatedColors(color1, color2, (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
+            _lights[i]->color = c;
+          } else {
+            _lights[i]->color = kBlackColor;
+          }
+        }
+        _smoothLeader = fmod(_smoothLeader + (10. / frameDuration), _lightCount);
         break;
       }
       
@@ -458,20 +547,43 @@ void BMScene::tick()
     _lights[i]->transitionTick(tickTime, frameDuration * _frameDurationMultiplier);
   }
   
+  // Automatic colors
+  for (int i = 0; i < _automaticColorsCount; ++i) {
+    if (_automaticColorsProgress[i] == 0 || _automaticColorsProgress[i] >= 1) {
+//      Serial.print("Automatic color ");
+//      Serial.print(i);
+//      Serial.print(" finished changing from color ");
+//      PrintColor(_automaticColors[i]);
+//      Serial.print(" to color ");
+//      PrintColor(_automaticColorsTargets[i]);
+//      Serial.println();
+      
+      _automaticColorsProgress[i] = 0;
+      _automaticColors[i] = _automaticColorsTargets[i];
+      _automaticColorsTargets[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+      
+    }
+    _automaticColorsProgress[i] += 0.01;
+  }
+  
   updateStrand();
   _lastTick = time;
   
+#ifndef TEST_MODE
   if (time - _modeStart > TRANSITION_TIME * 1000) {
     setMode(randomMode());
   }
+#endif
   unsigned int newFrameDuration = (analogRead(TCL_POT2) + 100) / 10.; // Potentiometer has range [0, 1023], map to [10, 112]
-  if (newFrameDuration != gLights->frameDuration) {
-    gLights->frameDuration = newFrameDuration;
+  if (newFrameDuration != frameDuration) {
+    frameDuration = newFrameDuration;
+  #ifndef TEST_MODE
     // Switch out of modes that are too slow or fast for the new frameDuration
     DelayRange range = rangeForMode(_mode);
     if (newFrameDuration < range.low || newFrameDuration > range.high) {
       setMode(randomMode());
     }
+#endif
   }
 }
 
@@ -486,7 +598,11 @@ void setup()
 #endif
   
   gLights = new BMScene(LED_COUNT);
+#ifdef TEST_MODE
+  gLights->setMode(TEST_MODE);
+#else
   gLights->setMode(gLights->randomMode());
+#endif
   gLights->frameDuration = 100;
 }
 
