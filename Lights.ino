@@ -419,6 +419,22 @@ void BMScene::setMode(BMMode mode)
 
 void BMScene::tick()
 {
+  static bool allOff = false;
+  if (digitalRead(TCL_SWITCH2) == LOW) {
+    if (!allOff) {
+      for (int i = 0; i < _lightCount; ++i) {
+        _lights[i]->transitionToColor(kBlackColor, 3);
+      }
+      allOff = true;
+    }
+    if (!_lights[0]->isTransitioning()) {
+      // Just sleep after we're done fading
+      delay(100);
+    }
+  } else {
+    allOff = false;
+  }
+  
   unsigned long time = millis();
   unsigned long tickTime = time - _lastTick;
   unsigned long frameTime = time - _lastFrame;
@@ -435,7 +451,7 @@ void BMScene::tick()
   }
 #endif
   
-  if (frameTime > frameDuration * _frameDurationMultiplier) {
+  if (!allOff && frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
       case BMModeFollow: {
         _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 5);
@@ -625,7 +641,6 @@ void BMScene::tick()
       _automaticColorsProgress[i] = 0;
       _automaticColors[i] = _automaticColorsTargets[i];
       _automaticColorsTargets[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
-      
     }
     _automaticColorsProgress[i] += 0.01;
   }
