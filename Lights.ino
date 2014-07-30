@@ -26,6 +26,51 @@ long PotentiometerRead(int pin, int rangeMin, int rangeMax)
   return round(analogRead(pin) / 1023.0 * (rangeMax - rangeMin) + rangeMin);
 }
 
+/* Begin Mozzi Random */
+
+// moved these out of xorshift96() so xorshift96() can be reseeded manually
+static unsigned long x = 132456789, y = 362436069, z = 521288629;
+// static unsigned long x= analogRead(A0)+123456789;
+// static unsigned long y= analogRead(A1)+362436069;
+// static unsigned long z= analogRead(A2)+521288629;
+
+/** @ingroup random
+Random number generator. A faster replacement for Arduino's random function,
+which is too slow to use with Mozzi.  
+Based on Marsaglia, George. (2003). Xorshift RNGs. http://www.jstatsoft.org/v08/i14/xorshift.pdf
+@return a random 32 bit integer.
+@todo check timing of xorshift96(), rand() and other PRNG candidates.
+ */
+
+unsigned long xorshift96()
+{ //period 2^96-1
+    // static unsigned long x=123456789, y=362436069, z=521288629;
+    unsigned long t;
+
+    x ^= x << 16;
+    x ^= x >> 5;
+    x ^= x << 1;
+
+    t = x;
+    x = y;
+    y = z;
+    z = t ^ x ^ y;
+
+    return z;
+}
+
+unsigned int fast_rand(unsigned int minval, unsigned int maxval)
+{
+  return (unsigned int) ((((xorshift96() & 0xFFFF) * (maxval-minval))>>16) + minval);
+}
+
+unsigned int fast_rand(unsigned int maxval)
+{
+  return (unsigned int) (((xorshift96() & 0xFFFF) * (maxval))>>16);
+}
+
+/* End Mozzi Random */
+
 struct Color {
   byte red;
   byte green;
@@ -230,7 +275,7 @@ private:
   
   Color *_automaticColors;
   Color *_automaticColorsTargets;
-  float *_automaticColorsProgress;
+  int *_automaticColorsProgress; // 0-100%
   
   float _transitionProgress;
   Color _targetColor;
@@ -323,7 +368,7 @@ BMScene::~BMScene()
 
 Color BMScene::getAutomaticColor(unsigned int i)
 {
-  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i] * 100, 100);
+  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i], 100);
 }
 
 DelayRange BMScene::rangeForMode(BMMode mode)
@@ -345,7 +390,7 @@ BMMode BMScene::randomMode()
 {
   BMMode newMode;
   while (1) {
-    newMode = (BMMode)random(BMModeCount);
+    newMode = (BMMode)fast_rand(BMModeCount);
     DelayRange range = rangeForMode(newMode);
     if (frameDuration >= range.low && frameDuration <= range.high) {
       break;
@@ -386,7 +431,7 @@ void BMScene::setMode(BMMode mode)
       case BMModeFollow: {
         // When starting follow, there are sometimes single lights stuck on until the follow lead gets there. 
         // This keeps it from looking odd and too dark
-        Color fillColor = ColorWithInterpolatedColors(RGBRainbow[random(ARRAY_SIZE(RGBRainbow))], kBlackColor, random(20, 60) / 10.0, 100);
+        Color fillColor = ColorWithInterpolatedColors(RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))], kBlackColor, fast_rand(20, 60) / 10.0, 100);
         transitionAll(fillColor, 5);
         break;
       }
@@ -402,7 +447,7 @@ void BMScene::setMode(BMMode mode)
       case BMModeWaves:
         _curveBlackIntensity = true;
         _followLeader = 0;
-        _targetColor = RGBRainbow[random(ARRAY_SIZE(RGBRainbow))];
+        _targetColor = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
         _transitionProgress = 0;
         _frameDurationMultiplier = 2;
         break;
@@ -412,10 +457,10 @@ void BMScene::setMode(BMMode mode)
   if (_automaticColorsCount > 0) {
     _automaticColors = (Color *)malloc(_automaticColorsCount * sizeof(Color));
     _automaticColorsTargets = (Color *)malloc(_automaticColorsCount * sizeof(Color));
-    _automaticColorsProgress = (float *)malloc(_automaticColorsCount * sizeof(float));
+    _automaticColorsProgress = (int *)malloc(_automaticColorsCount * sizeof(int));
     for (int i = 0; i < _automaticColorsCount; ++i) {
-      _automaticColors[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
-      _automaticColorsTargets[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+      _automaticColors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+      _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
       _automaticColorsProgress[i] = 0;
     }
   }
@@ -478,16 +523,16 @@ void BMScene::tick()
         for (int i = 0; i < _lightCount; ++i) {
           BMLight *light = _lights[i];
           if (!(light->isTransitioning())) {
-            long choice = random(100);
+            long choice = fast_rand(100);
             
             if (choice < 10) {
               // 10% of the time, fade slowly to black
               light->transitionToColor(kBlackColor, 20);
             } else {
               // Otherwise, fade or snap to another color
-              Color color2 = (random(2) ? c1 : c2);
+              Color color2 = (fast_rand(2) ? c1 : c2);
               if (choice < 95) {
-                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, random(101), random(101));
+                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, fast_rand(101), fast_rand(101));
                 light->transitionToColor(mixedColor, 40);
               } else {
                 light->color = color2;
@@ -513,7 +558,7 @@ void BMScene::tick()
                 light->modeState = 0;
                 break;
               default:
-                if (random(200) == 0) {
+                if (fast_rand(200) == 0) {
                   // Blinky blinky
                   light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 30);
                   light->modeState = 1;
@@ -530,7 +575,7 @@ void BMScene::tick()
         static int direction = 1;
         _lights[_followLeader]->transitionToColor(kBlackColor, 10);
         _followLeader = _followLeader + direction;
-        _lights[_followLeader]->color = RGBRainbow[random(ARRAY_SIZE(RGBRainbow))];
+        _lights[_followLeader]->color = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
         if (_followLeader == _lightCount - 1  || _followLeader == 0) {
           direction = -direction;
         }
@@ -546,7 +591,7 @@ void BMScene::tick()
         if (_transitionProgress == 0 || _transitionProgress >= 1) {
           _transitionProgress = 0;
           _followColor = _targetColor;
-          _targetColor = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+          _targetColor = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
         }
         _transitionProgress += 0.01;
         Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress * 100, 100);
@@ -613,7 +658,7 @@ void BMScene::tick()
          const int parityCount = PotentiometerRead(MODE_DIAL, 1, 5);
          Color colors[parityCount];
          for (int i = 0; i < parityCount; ++i) {
-           colors[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+           colors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
          }
          for (int i = 0; i < _lightCount; ++i) {
            int parity = i % parityCount;
@@ -625,7 +670,7 @@ void BMScene::tick()
      case BMModeBoomResponder:
        for (int i = 0; i < _lightCount; ++i) {
          if (!_lights[i]->isTransitioning()) {
-           _lights[i]->transitionToColor(NamedRainbow[random(ARRAY_SIZE(NamedRainbow))], 10);
+           _lights[i]->transitionToColor(NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))], 10);
          }
        }
        break;
@@ -644,12 +689,12 @@ void BMScene::tick()
   
   // Automatic colors
   for (int i = 0; i < _automaticColorsCount; ++i) {
-    if (_automaticColorsProgress[i] == 0 || _automaticColorsProgress[i] >= 1) {
+    if (_automaticColorsProgress[i] == 0 || _automaticColorsProgress[i] >= 100) {
       _automaticColorsProgress[i] = 0;
       _automaticColors[i] = _automaticColorsTargets[i];
-      _automaticColorsTargets[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+      _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
     }
-    _automaticColorsProgress[i] += 0.01;
+    _automaticColorsProgress[i] += 1;
   }
   
   updateStrand();
