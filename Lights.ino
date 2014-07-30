@@ -78,13 +78,17 @@ static bool ColorIsEqualToColor(Color c1, Color c2)
   return (c1.red == c2.red && c1.green == c2.green && c1.blue == c2.blue);
 }
 
-// Transition and intensity are both in the range [0, 1]
-static Color ColorWithInterpolatedColors(Color c1, Color c2, float transition, float intensity)
+// Transition and intensity are both in the range [0, 100]
+static Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity)
 {
+  // This is all integer math for speediness
   byte r, g, b;
-  r = (((float)c2.red - c1.red) * transition + c1.red) * intensity;
-  g = (((float)c2.green - c1.green) * transition + c1.green) * intensity;
-  b = (((float)c2.blue - c1.blue) * transition + c1.blue) * intensity;
+  r = c1.red - transition * c1.red / 100 + transition * c2.red / 100;
+  r = intensity * r / 100;
+  g = c1.green - transition * c1.green / 100 + transition * c2.green / 100;
+  g = intensity * g / 100;
+  b = c1.blue - transition * c1.blue / 100 + transition * c2.blue / 100;
+  b = intensity * b / 100;
   
   return MakeColor(r, g, b);
 }
@@ -319,7 +323,7 @@ BMScene::~BMScene()
 
 Color BMScene::getAutomaticColor(unsigned int i)
 {
-  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i], 1);
+  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i] * 100, 100);
 }
 
 DelayRange BMScene::rangeForMode(BMMode mode)
@@ -382,7 +386,7 @@ void BMScene::setMode(BMMode mode)
       case BMModeFollow: {
         // When starting follow, there are sometimes single lights stuck on until the follow lead gets there. 
         // This keeps it from looking odd and too dark
-        Color fillColor = ColorWithInterpolatedColors(RGBRainbow[random(ARRAY_SIZE(RGBRainbow))], kBlackColor, random(2, 6) / 10.0, 1);
+        Color fillColor = ColorWithInterpolatedColors(RGBRainbow[random(ARRAY_SIZE(RGBRainbow))], kBlackColor, random(20, 60) / 10.0, 100);
         transitionAll(fillColor, 5);
         break;
       }
@@ -446,7 +450,10 @@ void BMScene::tick()
   tickCount++;
   if (tickCount > 100) {
     Serial.print("Avg tick time: ");
-    Serial.println(avgTickTime);
+    Serial.print(avgTickTime);
+    Serial.print(", ");
+    Serial.print((int)(1000 / avgTickTime));
+    Serial.println("fps");
     tickCount = 0;
   }
 #endif
@@ -480,7 +487,7 @@ void BMScene::tick()
               // Otherwise, fade or snap to another color
               Color color2 = (random(2) ? c1 : c2);
               if (choice < 95) {
-                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, random(101) / 100.0, random(101) / 100.0);
+                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, random(101), random(101));
                 light->transitionToColor(mixedColor, 40);
               } else {
                 light->color = color2;
@@ -542,7 +549,7 @@ void BMScene::tick()
           _targetColor = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
         }
         _transitionProgress += 0.01;
-        Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress, 1);
+        Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress * 100, 100);
         for (int i = 0; i < _lightCount / waveLength; ++i) {
           _lights[(_followLeader + i * waveLength) % _lightCount]->transitionToColor(waveColor, transitionRate);
           _lights[(_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount]->transitionToColor(kBlackColor, transitionRate);
@@ -591,7 +598,7 @@ void BMScene::tick()
             
             nearDistance1 = MIN(nearDistance1, halfWave);
             nearDistance2 = MIN(nearDistance2, halfWave);
-            Color c = ColorWithInterpolatedColors(color1, color2, (nearDistance1 / halfWave - nearDistance2 / halfWave) / 2.0 + 0.5, (1 - (nearDistance1 + nearDistance2) / waveLength));
+            Color c = ColorWithInterpolatedColors(color1, color2, (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
             _lights[i]->color = c;
           } else {
             _lights[i]->color = kBlackColor;
