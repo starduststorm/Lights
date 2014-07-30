@@ -7,6 +7,7 @@
 // Majority of LEDs should be on at all times to avoid not lighting area enough
 
 #define SERIAL_LOGGING 0
+#define DEBUG 0
 #define TRANSITION_TIME (30)
 //#define TEST_MODE (BMModeInterferringWaves)
 
@@ -15,7 +16,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 
-static const unsigned int LED_COUNT = 50;
+static const unsigned int LED_COUNT = 150;
 
 struct Color {
   byte red;
@@ -37,6 +38,23 @@ static const Color kWhiteColor = (Color){0xFF, 0xFF, 0xFF};
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
 Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor, kWhiteColor};
+
+extern int __bss_end;
+extern void *__brkval;
+
+#if DEBUG
+int get_free_memory()
+{
+  int free_memory;
+
+  if((int)__brkval == 0)
+    free_memory = ((int)&free_memory) - ((int)&__bss_end);
+  else
+    free_memory = ((int)&free_memory) - ((int)__brkval);
+
+  return free_memory;
+}
+#endif
 
 static struct Color MakeColor(byte r, byte g, byte b)
 {
@@ -82,8 +100,9 @@ typedef enum {
   BMModeBlueFire,
   BMModeLightningBugs,
   BMModeWaves,
-  BMModeInterferringWaves,
+  BMModeInterferingWaves,
   BMModeCount,
+  BMModeBoomResponder,
   BMModeBounce,
 } BMMode;
 
@@ -242,7 +261,6 @@ void BMScene::updateStrand()
       blue *= blue;
       blue *= 255;
     }
-    
     TCL.sendColor(red, green, blue);
   }
   TCL.sendEmptyFrame();
@@ -273,7 +291,7 @@ BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100
   kModeRanges[BMModeBlueFire] = MakeDelayRange(50, 200);
   kModeRanges[BMModeLightningBugs] = MakeDelayRange(40, 200);
   kModeRanges[BMModeWaves] = kDelayRangeAll;
-  kModeRanges[BMModeWaves] = kDelayRangeAll;
+  kModeRanges[BMModeInterferingWaves] = kDelayRangeAll;
   
   _lightCount = lightCount;
   _lights = new BMLight*[_lightCount];
@@ -298,6 +316,10 @@ Color BMScene::getAutomaticColor(unsigned int i)
 DelayRange BMScene::rangeForMode(BMMode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
+    if (kModeRanges[mode].low == 0 && kModeRanges[mode].high == 0) {
+      // It's just unset, treat it like "all"
+      return kDelayRangeAll;
+    }
     return kModeRanges[mode];
   }
   return kDelayRangeAll;
@@ -353,12 +375,12 @@ void BMScene::setMode(BMMode mode)
         // This keeps it from looking odd and too dark
         Color fillColor = ColorWithInterpolatedColors(RGBRainbow[random(ARRAY_SIZE(RGBRainbow))], kBlackColor, random(20, 60), 100);
         transitionAll(fillColor, 5);
-        // intentional fall-through
+        break;
       }
       case BMModeLightningBugs:
         transitionAll(kNightColor, 10);
         break;
-      case BMModeInterferringWaves:
+      case BMModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
         _curveBlackIntensity = true;
@@ -474,6 +496,9 @@ void BMScene::tick()
       case BMModeWaves: {
         const int waveLength = 10;
         const int transitionRate = 100 / (_lightCount / waveLength);
+        
+        // FIXME: Have this 1 automatic color instead.
+        
         if (_transitionProgress == 0 || _transitionProgress >= 1) {
           _transitionProgress = 0;
           _followColor = _targetColor;
@@ -489,7 +514,8 @@ void BMScene::tick()
         break;
       }
       
-      case BMModeInterferringWaves: {
+      case BMModeInterferingWaves: {
+        // FIXME: It's jarring to shift in and out of this mode since it doesn't respect any transitions that were already in effect.
         const int waveLength = 12;
         const float halfWave = waveLength / 2;
         
@@ -507,6 +533,9 @@ void BMScene::tick()
         }
         
         for (int i = 0; i < _lightCount; ++i) {
+          if (_lights[i]->isTransitioning()) {
+            continue;
+          }
           int nearColor1 = -1, nearColor2 = -1; // Find the two colors nearest to this light
           float nearDistance1 = 1000, nearDistance2 = 1000;
           for (int c = 0; c < _automaticColorsCount; ++c) {
@@ -531,9 +560,17 @@ void BMScene::tick()
             _lights[i]->color = kBlackColor;
           }
         }
-        _smoothLeader = fmod(_smoothLeader + (10. / frameDuration), _lightCount);
+        _smoothLeader = fmod(_smoothLeader + (20. / frameDuration), _lightCount);
         break;
-      }
+     }
+      
+     case BMModeBoomResponder:
+       for (int i = 0; i < _lightCount; ++i) {
+         if (!_lights[i]->isTransitioning()) {
+           _lights[i]->transitionToColor(NamedRainbow[random(ARRAY_SIZE(NamedRainbow))], 10);
+         }
+       }
+       break;
       
       default: // Turn all off
         applyAll(kBlackColor);
@@ -550,14 +587,6 @@ void BMScene::tick()
   // Automatic colors
   for (int i = 0; i < _automaticColorsCount; ++i) {
     if (_automaticColorsProgress[i] == 0 || _automaticColorsProgress[i] >= 1) {
-//      Serial.print("Automatic color ");
-//      Serial.print(i);
-//      Serial.print(" finished changing from color ");
-//      PrintColor(_automaticColors[i]);
-//      Serial.print(" to color ");
-//      PrintColor(_automaticColorsTargets[i]);
-//      Serial.println();
-      
       _automaticColorsProgress[i] = 0;
       _automaticColors[i] = _automaticColorsTargets[i];
       _automaticColorsTargets[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
@@ -589,13 +618,13 @@ void BMScene::tick()
 
 void setup()
 {
-  randomSeed(analogRead(0));
-  TCL.begin();
-  TCL.setupDeveloperShield();
-  
 #if SERIAL_LOGGING
   Serial.begin(9600);
 #endif
+
+  randomSeed(analogRead(A4));
+  TCL.begin();
+  TCL.setupDeveloperShield();
   
   gLights = new BMScene(LED_COUNT);
 #ifdef TEST_MODE
@@ -608,6 +637,15 @@ void setup()
 
 void loop()
 {
+#if DEBUG
+  static int x = 0;
+  Serial.print("loop #");
+  Serial.println(x++);
+  Serial.print("Memory free: ");
+  Serial.print(get_free_memory());
+  Serial.println(" bytes");
+#endif
+    
   gLights->tick();
 }
 
