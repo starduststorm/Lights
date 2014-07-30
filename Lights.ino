@@ -9,14 +9,22 @@
 #define SERIAL_LOGGING 0
 #define DEBUG 0
 #define TRANSITION_TIME (30)
-//#define TEST_MODE (BMModeInterferringWaves)
+#define TEST_MODE (BMModeParity)
 
 #define MIN(x, y) ((x) > (y) ? y : x)
 #define MAX(x, y) ((x) < (y) ? y : x)
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 
+#define MODE_DIAL TCL_POT1
+
 static const unsigned int LED_COUNT = 150;
+ 
+long PotentiometerRead(int pin, int rangeMin, int rangeMax)
+{
+  // Potentiometer has range [0, 1023]
+  return round(analogRead(pin) / 1023.0 * (rangeMax - rangeMin) + rangeMin);
+}
 
 struct Color {
   byte red;
@@ -70,13 +78,13 @@ static bool ColorIsEqualToColor(Color c1, Color c2)
   return (c1.red == c2.red && c1.green == c2.green && c1.blue == c2.blue);
 }
 
-// Transition and intensity are both in the range 0-100
-static Color ColorWithInterpolatedColors(Color c1, Color c2, unsigned int transition, unsigned int intensity)
+// Transition and intensity are both in the range [0, 1]
+static Color ColorWithInterpolatedColors(Color c1, Color c2, float transition, float intensity)
 {
   byte r, g, b;
-  r = (((float)c2.red - c1.red) * transition / 100 + c1.red) * intensity / 100;
-  g = (((float)c2.green - c1.green) * transition / 100 + c1.green) * intensity / 100;
-  b = (((float)c2.blue - c1.blue) * transition / 100 + c1.blue) * intensity / 100;
+  r = (((float)c2.red - c1.red) * transition + c1.red) * intensity;
+  g = (((float)c2.green - c1.green) * transition + c1.green) * intensity;
+  b = (((float)c2.blue - c1.blue) * transition + c1.blue) * intensity;
   
   return MakeColor(r, g, b);
 }
@@ -101,6 +109,7 @@ typedef enum {
   BMModeLightningBugs,
   BMModeWaves,
   BMModeInterferingWaves,
+  BMModeParity,
   BMModeCount,
   BMModeBoomResponder,
   BMModeBounce,
@@ -310,7 +319,7 @@ BMScene::~BMScene()
 
 Color BMScene::getAutomaticColor(unsigned int i)
 {
-  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i] * 100, 100);
+  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i], 1);
 }
 
 DelayRange BMScene::rangeForMode(BMMode mode)
@@ -373,7 +382,7 @@ void BMScene::setMode(BMMode mode)
       case BMModeFollow: {
         // When starting follow, there are sometimes single lights stuck on until the follow lead gets there. 
         // This keeps it from looking odd and too dark
-        Color fillColor = ColorWithInterpolatedColors(RGBRainbow[random(ARRAY_SIZE(RGBRainbow))], kBlackColor, random(20, 60), 100);
+        Color fillColor = ColorWithInterpolatedColors(RGBRainbow[random(ARRAY_SIZE(RGBRainbow))], kBlackColor, random(2, 6) / 10.0, 1);
         transitionAll(fillColor, 5);
         break;
       }
@@ -414,6 +423,18 @@ void BMScene::tick()
   unsigned long tickTime = time - _lastTick;
   unsigned long frameTime = time - _lastFrame;
   
+#if DEBUG && SERIAL_LOGGING
+  static int tickCount = 0;
+  static float avgTickTime = 0;
+  avgTickTime = (avgTickTime * tickCount + tickTime) / (float)(tickCount + 1);
+  tickCount++;
+  if (tickCount > 100) {
+    Serial.print("Avg tick time: ");
+    Serial.println(avgTickTime);
+    tickCount = 0;
+  }
+#endif
+  
   if (frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
       case BMModeFollow: {
@@ -443,7 +464,7 @@ void BMScene::tick()
               // Otherwise, fade or snap to another color
               Color color2 = (random(2) ? c1 : c2);
               if (choice < 95) {
-                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, random(101), random(101));
+                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, random(101) / 100.0, random(101) / 100.0);
                 light->transitionToColor(mixedColor, 40);
               } else {
                 light->color = color2;
@@ -494,7 +515,7 @@ void BMScene::tick()
       }
       
       case BMModeWaves: {
-        const int waveLength = 10;
+        const unsigned int waveLength = PotentiometerRead(MODE_DIAL, 8, 20);
         const int transitionRate = 100 / (_lightCount / waveLength);
         
         // FIXME: Have this 1 automatic color instead.
@@ -505,7 +526,7 @@ void BMScene::tick()
           _targetColor = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
         }
         _transitionProgress += 0.01;
-        Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress * 100, 100);
+        Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress, 1);
         for (int i = 0; i < _lightCount / waveLength; ++i) {
           _lights[(_followLeader + i * waveLength) % _lightCount]->transitionToColor(waveColor, transitionRate);
           _lights[(_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount]->transitionToColor(kBlackColor, transitionRate);
@@ -554,7 +575,7 @@ void BMScene::tick()
             
             nearDistance1 = MIN(nearDistance1, halfWave);
             nearDistance2 = MIN(nearDistance2, halfWave);
-            Color c = ColorWithInterpolatedColors(color1, color2, (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
+            Color c = ColorWithInterpolatedColors(color1, color2, (nearDistance1 / halfWave - nearDistance2 / halfWave) / 2.0 + 0.5, (1 - (nearDistance1 + nearDistance2) / waveLength));
             _lights[i]->color = c;
           } else {
             _lights[i]->color = kBlackColor;
@@ -563,7 +584,21 @@ void BMScene::tick()
         _smoothLeader = fmod(_smoothLeader + (20. / frameDuration), _lightCount);
         break;
      }
-      
+     
+     case BMModeParity:
+       if (!_lights[0]->isTransitioning()) {
+         const int parityCount = PotentiometerRead(MODE_DIAL, 1, 5);
+         Color colors[parityCount];
+         for (int i = 0; i < parityCount; ++i) {
+           colors[i] = NamedRainbow[random(ARRAY_SIZE(NamedRainbow))];
+         }
+         for (int i = 0; i < _lightCount; ++i) {
+           int parity = i % parityCount;
+           _lights[i]->transitionToColor(colors[parity], 2);
+         }
+       }
+       break;
+     
      case BMModeBoomResponder:
        for (int i = 0; i < _lightCount; ++i) {
          if (!_lights[i]->isTransitioning()) {
@@ -603,7 +638,7 @@ void BMScene::tick()
     setMode(randomMode());
   }
 #endif
-  unsigned int newFrameDuration = (analogRead(TCL_POT2) + 100) / 10.; // Potentiometer has range [0, 1023], map to [10, 112]
+  unsigned int newFrameDuration = PotentiometerRead(TCL_POT2, 10, 112);
   if (newFrameDuration != frameDuration) {
     frameDuration = newFrameDuration;
   #ifndef TEST_MODE
@@ -613,6 +648,17 @@ void BMScene::tick()
       setMode(randomMode());
     }
 #endif
+  }
+  
+  // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres
+  static bool button1Down = true;
+  if (digitalRead(TCL_MOMENTARY1) == LOW) {
+    if (!button1Down) {
+      setMode((BMMode)((_mode + 1) % BMModeCount));
+      button1Down = true;
+    }
+  } else {
+    button1Down = false;
   }
 }
 
@@ -637,13 +683,14 @@ void setup()
 
 void loop()
 {
-#if DEBUG
-  static int x = 0;
-  Serial.print("loop #");
-  Serial.println(x++);
-  Serial.print("Memory free: ");
-  Serial.print(get_free_memory());
-  Serial.println(" bytes");
+#if DEBUG && SERIAL_LOGGING
+  static int loopCount = 0;
+  if (loopCount++ > 1000) {
+    Serial.print("Memory free: ");
+    Serial.print(get_free_memory());
+    Serial.println(" bytes");
+    loopCount = 0;
+  }
 #endif
     
   gLights->tick();
