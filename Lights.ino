@@ -8,8 +8,8 @@
 
 #define SERIAL_LOGGING 0
 #define DEBUG 0
-#define TRANSITION_TIME (30)
-#define TEST_MODE (BMModeParity)
+#define TRANSITION_TIME (90)
+//#define TEST_MODE (BMModeWaves)
 
 #define MIN(x, y) ((x) > (y) ? y : x)
 #define MAX(x, y) ((x) < (y) ? y : x)
@@ -157,9 +157,9 @@ typedef enum {
   BMModeBlueFire,
   BMModeLightningBugs,
   BMModeWaves,
-  BMModeInterferingWaves,
   BMModeParity,
   BMModeCount,
+  BMModeInterferingWaves,
   BMModeBoomResponder,
   BMModeBounce,
 } BMMode;
@@ -279,6 +279,10 @@ private:
   
   float _transitionProgress;
   Color _targetColor;
+  bool _directionIsReversed;
+  
+  // TODO: Make this a pointer to an arbitrary data struct or something
+  int _modeState1;
   
   void applyAll(Color c);
   void transitionAll(Color c, float rate);
@@ -302,7 +306,8 @@ void BMScene::updateStrand()
 {
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
-    BMLight *light = _lights[i];
+    int index = (_directionIsReversed ? _lightCount - i : i);
+    BMLight *light = _lights[index];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
     
     if (_curveBlackIntensity) {
@@ -444,13 +449,16 @@ void BMScene::setMode(BMMode mode)
         _curveBlackIntensity = true;
         _automaticColorsCount = _lightCount / 10;
         break;
-      case BMModeWaves:
+      case BMModeWaves: {
         _curveBlackIntensity = true;
         _followLeader = 0;
         _targetColor = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
-        _transitionProgress = 0;
         _frameDurationMultiplier = 2;
+        _automaticColorsCount = 1;
+        int presets[] = {15, _lightCount};
+        _modeState1 = presets[fast_rand(ARRAY_SIZE(presets))];
         break;
+      }
     }
     _modeStart = millis();
   }
@@ -464,6 +472,7 @@ void BMScene::setMode(BMMode mode)
       _automaticColorsProgress[i] = 0;
     }
   }
+  _directionIsReversed = (fast_rand(2) == 0);
 }
 
 void BMScene::tick()
@@ -583,18 +592,10 @@ void BMScene::tick()
       }
       
       case BMModeWaves: {
-        const unsigned int waveLength = PotentiometerRead(MODE_DIAL, 8, 20);
-        const int transitionRate = 100 / (_lightCount / waveLength);
+        const unsigned int waveLength = _modeState1;//PotentiometerRead(MODE_DIAL, 8, 30);
+        const int transitionRate = 200 / waveLength; // Needs to fade out over the course of half a wave
         
-        // FIXME: Have this 1 automatic color instead.
-        
-        if (_transitionProgress == 0 || _transitionProgress >= 1) {
-          _transitionProgress = 0;
-          _followColor = _targetColor;
-          _targetColor = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
-        }
-        _transitionProgress += 0.01;
-        Color waveColor = ColorWithInterpolatedColors(_followColor, _targetColor, _transitionProgress * 100, 100);
+        Color waveColor = getAutomaticColor(0);
         for (int i = 0; i < _lightCount / waveLength; ++i) {
           _lights[(_followLeader + i * waveLength) % _lightCount]->transitionToColor(waveColor, transitionRate);
           _lights[(_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount]->transitionToColor(kBlackColor, transitionRate);
@@ -605,6 +606,7 @@ void BMScene::tick()
       
       case BMModeInterferingWaves: {
         // FIXME: It's jarring to shift in and out of this mode since it doesn't respect any transitions that were already in effect.
+        // Idea: Have the first N passes use overlapping short transitions instead of setting the color.
         const int waveLength = 12;
         const float halfWave = waveLength / 2;
         
