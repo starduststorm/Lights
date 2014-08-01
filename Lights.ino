@@ -6,6 +6,15 @@
 // Since delay is constant across modes, this won't change from calm to frantic suddenly
 // Majority of LEDs should be on at all times to avoid not lighting area enough
 
+
+// -----------------------------------------
+// Pattern Ideas:
+// 
+// A pattern that just fades to a color, and stays there for a few seconds. It's interesting to have the world be a solid color and stay still, too.
+//     Bonus points if the fade got creative sometimes, and went pixel-at-a-time, ordid a bi-directional wipe, flashed away (party mode), or some other cool effect.
+// -----------------------------------------
+
+
 #define SERIAL_LOGGING 0
 #define DEBUG 0
 #define TRANSITION_TIME (90)
@@ -19,7 +28,13 @@
 #define MODE_DIAL TCL_POT1
 
 static const unsigned int LED_COUNT = 150;
- 
+
+float PotentiometerReadf(int pin, float rangeMin, float rangeMax)
+{
+  // Potentiometer has range [0, 1023]
+  return analogRead(pin) / 1023.0 * (rangeMax - rangeMin) + rangeMin;
+}
+
 long PotentiometerRead(int pin, int rangeMin, int rangeMax)
 {
   // Potentiometer has range [0, 1023]
@@ -177,7 +192,9 @@ static struct DelayRange MakeDelayRange(unsigned int low, unsigned int high)
   r.high = high;
   return r;
 }
-static const DelayRange kDelayRangeAll = (DelayRange){0, 1000};
+
+static const unsigned int kMaxFrameDuration = 112;
+DelayRange kDelayRangeAllExceptSlowest = MakeDelayRange(0, kMaxFrameDuration - 2);
 
 static DelayRange kModeRanges[BMModeCount] = {0};
 
@@ -298,6 +315,7 @@ public:
   BMMode randomMode();
   
   unsigned int frameDuration; // millisecond delay between frames
+  float frameDurationFloat; // Needed to compare values to current potentiometer to ignore noise
 };
 
 #pragma mark - Private
@@ -349,12 +367,12 @@ void BMScene::transitionAll(Color c, float rate)
 
 BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100)
 {
-  kModeRanges[BMModeFollow] = kDelayRangeAll;
-  kModeRanges[BMModeFire] = MakeDelayRange(50, 200);
-  kModeRanges[BMModeBlueFire] = MakeDelayRange(50, 200);
-  kModeRanges[BMModeLightningBugs] = MakeDelayRange(40, 200);
-  kModeRanges[BMModeWaves] = kDelayRangeAll;
-  kModeRanges[BMModeInterferingWaves] = kDelayRangeAll;
+  kModeRanges[BMModeFollow] = kDelayRangeAllExceptSlowest;
+  kModeRanges[BMModeFire] = MakeDelayRange(50, kMaxFrameDuration - 2);
+  kModeRanges[BMModeBlueFire] = MakeDelayRange(50, kMaxFrameDuration - 2);
+  kModeRanges[BMModeLightningBugs] = MakeDelayRange(kMaxFrameDuration - 2, kMaxFrameDuration);
+  kModeRanges[BMModeWaves] = kDelayRangeAllExceptSlowest;
+  kModeRanges[BMModeInterferingWaves] = kDelayRangeAllExceptSlowest;
   
   _lightCount = lightCount;
   _lights = new BMLight*[_lightCount];
@@ -380,12 +398,12 @@ DelayRange BMScene::rangeForMode(BMMode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
     if (kModeRanges[mode].low == 0 && kModeRanges[mode].high == 0) {
-      // It's just unset, treat it like "all"
-      return kDelayRangeAll;
+      // It's just unset, treat it like middle speed
+      return kDelayRangeAllExceptSlowest;
     }
     return kModeRanges[mode];
   }
-  return kDelayRangeAll;
+  return kDelayRangeAllExceptSlowest;
 }
 
 static const Color kNightColor = MakeColor(0, 0, 0x10);
@@ -456,7 +474,7 @@ void BMScene::setMode(BMMode mode)
         _frameDurationMultiplier = 2;
         _automaticColorsCount = 1;
         int presets[] = {15, _lightCount};
-        _modeState1 = presets[fast_rand(ARRAY_SIZE(presets))];
+        _modeState1 = 0.75 * presets[fast_rand(ARRAY_SIZE(presets))];
         break;
       }
     }
@@ -493,9 +511,9 @@ void BMScene::tick()
     allOff = false;
   }
   
-  unsigned long time = millis();
-  unsigned long tickTime = time - _lastTick;
-  unsigned long frameTime = time - _lastFrame;
+  unsigned long long time = millis();
+  unsigned long long tickTime = time - _lastTick;
+  unsigned long long frameTime = time - _lastFrame;
   
 #if DEBUG && SERIAL_LOGGING
   static int tickCount = 0;
@@ -567,7 +585,7 @@ void BMScene::tick()
                 light->modeState = 0;
                 break;
               default:
-                if (fast_rand(200) == 0) {
+                if (fast_rand(500) == 0) {
                   // Blinky blinky
                   light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 30);
                   light->modeState = 1;
@@ -703,20 +721,21 @@ void BMScene::tick()
   _lastTick = time;
   
 #ifndef TEST_MODE
-  if (time - _modeStart > TRANSITION_TIME * 1000) {
+  if (time - _modeStart > (unsigned long long)TRANSITION_TIME * 1000) {
     setMode(randomMode());
   }
 #endif
-  unsigned int newFrameDuration = PotentiometerRead(TCL_POT2, 10, 112);
-  if (newFrameDuration != frameDuration) {
+  float newFrameDuration = PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration);
+  if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
     frameDuration = newFrameDuration;
-  #ifndef TEST_MODE
+    frameDurationFloat = newFrameDuration;
+//#ifndef TEST_MODE
     // Switch out of modes that are too slow or fast for the new frameDuration
     DelayRange range = rangeForMode(_mode);
     if (newFrameDuration < range.low || newFrameDuration > range.high) {
       setMode(randomMode());
     }
-#endif
+//#endif
   }
   
   // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres
@@ -736,7 +755,7 @@ void setup()
 #if SERIAL_LOGGING
   Serial.begin(9600);
 #endif
-
+  
   randomSeed(analogRead(A4));
   TCL.begin();
   TCL.setupDeveloperShield();
