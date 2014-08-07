@@ -18,7 +18,7 @@
 #define SERIAL_LOGGING 0
 #define DEBUG 0
 #define TRANSITION_TIME (90)
-//#define TEST_MODE (BMModeWaves)
+//#define TEST_MODE (BMModeOneBigWave)
 
 #define MIN(x, y) ((x) > (y) ? y : x)
 #define MAX(x, y) ((x) < (y) ? y : x)
@@ -172,6 +172,7 @@ typedef enum {
   BMModeBlueFire,
   BMModeLightningBugs,
   BMModeWaves,
+  BMModeOneBigWave,
   BMModeParity,
   BMModeCount,
   BMModeInterferingWaves,
@@ -194,7 +195,9 @@ static struct DelayRange MakeDelayRange(unsigned int low, unsigned int high)
 }
 
 static const unsigned int kMaxFrameDuration = 112;
-DelayRange kDelayRangeAllExceptSlowest = MakeDelayRange(0, kMaxFrameDuration - 2);
+static const unsigned int kMaxStandardFrameDuration = kMaxFrameDuration - 2;
+static const unsigned int kMinStandardFrameDuration = 2;
+static const DelayRange kDelayRangeStandard = MakeDelayRange(kMinStandardFrameDuration, kMaxStandardFrameDuration);
 
 static DelayRange kModeRanges[BMModeCount] = {0};
 
@@ -225,6 +228,9 @@ BMLight::BMLight() : transitionRate(0)
 
 void BMLight::transitionToColor(Color transitionTargetColor, float rate)
 {
+  if (ColorIsEqualToColor(color, transitionTargetColor)) {
+    return;
+  }
   if (rate <= 0) {
     rate = 1;
   }
@@ -298,9 +304,6 @@ private:
   Color _targetColor;
   bool _directionIsReversed;
   
-  // TODO: Make this a pointer to an arbitrary data struct or something
-  int _modeState1;
-  
   void applyAll(Color c);
   void transitionAll(Color c, float rate);
   
@@ -367,12 +370,13 @@ void BMScene::transitionAll(Color c, float rate)
 
 BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100)
 {
-  kModeRanges[BMModeFollow] = kDelayRangeAllExceptSlowest;
-  kModeRanges[BMModeFire] = MakeDelayRange(50, kMaxFrameDuration - 2);
-  kModeRanges[BMModeBlueFire] = MakeDelayRange(50, kMaxFrameDuration - 2);
-  kModeRanges[BMModeLightningBugs] = MakeDelayRange(kMaxFrameDuration - 2, kMaxFrameDuration);
-  kModeRanges[BMModeWaves] = kDelayRangeAllExceptSlowest;
-  kModeRanges[BMModeInterferingWaves] = kDelayRangeAllExceptSlowest;
+  kModeRanges[BMModeFollow] = kDelayRangeStandard;
+  kModeRanges[BMModeFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
+  kModeRanges[BMModeBlueFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
+  kModeRanges[BMModeLightningBugs] = MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration);
+  kModeRanges[BMModeWaves] = kDelayRangeStandard;
+  kModeRanges[BMModeOneBigWave] = MakeDelayRange(kMinStandardFrameDuration, 40);
+  kModeRanges[BMModeInterferingWaves] = kDelayRangeStandard;
   
   _lightCount = lightCount;
   _lights = new BMLight*[_lightCount];
@@ -399,11 +403,11 @@ DelayRange BMScene::rangeForMode(BMMode mode)
   if (mode < ARRAY_SIZE(kModeRanges)) {
     if (kModeRanges[mode].low == 0 && kModeRanges[mode].high == 0) {
       // It's just unset, treat it like middle speed
-      return kDelayRangeAllExceptSlowest;
+      return kDelayRangeStandard;
     }
     return kModeRanges[mode];
   }
-  return kDelayRangeAllExceptSlowest;
+  return kDelayRangeStandard;
 }
 
 static const Color kNightColor = MakeColor(0, 0, 0x10);
@@ -467,14 +471,13 @@ void BMScene::setMode(BMMode mode)
         _curveBlackIntensity = true;
         _automaticColorsCount = _lightCount / 10;
         break;
-      case BMModeWaves: {
+      case BMModeWaves:
+      case BMModeOneBigWave: {
         _curveBlackIntensity = true;
         _followLeader = 0;
         _targetColor = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
         _frameDurationMultiplier = 2;
         _automaticColorsCount = 1;
-        int presets[] = {15, _lightCount};
-        _modeState1 = 0.75 * presets[fast_rand(ARRAY_SIZE(presets))];
         break;
       }
     }
@@ -609,9 +612,10 @@ void BMScene::tick()
         break;
       }
       
-      case BMModeWaves: {
-        const unsigned int waveLength = _modeState1;//PotentiometerRead(MODE_DIAL, 8, 30);
-        const int transitionRate = 200 / waveLength; // Needs to fade out over the course of half a wave
+      case BMModeWaves:
+      case BMModeOneBigWave: {
+        const unsigned int waveLength = (_mode == BMModeWaves ? 15 : _lightCount);
+        const int transitionRate = 80 / (waveLength / 2.0); // Needs to fade out over the course of half a wave
         
         Color waveColor = getAutomaticColor(0);
         for (int i = 0; i < _lightCount / waveLength; ++i) {
