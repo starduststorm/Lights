@@ -11,7 +11,8 @@
 // Pattern Ideas:
 // 
 // A pattern that just fades to a color, and stays there for a few seconds. It's interesting to have the world be a solid color and stay still, too.
-//     Bonus points if the fade got creative sometimes, and went pixel-at-a-time, ordid a bi-directional wipe, flashed away (party mode), or some other cool effect.
+//     Bonus points if the fade got creative sometimes, and went pixel-at-a-time, 
+//     or did a bi-directional wipe, flashed away (party mode), or some other cool effect.
 // -----------------------------------------
 
 
@@ -153,6 +154,13 @@ static Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int
   return MakeColor(r, g, b);
 }
 
+typedef enum {
+  BMLightTransitionLinear = 0,
+  BMLightTransitionEaseIn,
+  BMLightTransitionEaseOut,
+} BMLightTransitionCurve;
+
+
 #if SERIAL_LOGGING
 void PrintColor(Color c)
 {
@@ -211,8 +219,10 @@ public:
   
   float transitionProgress; // [0, 1]
   float transitionRate; // percentage to transition per frame
+  BMLightTransitionCurve transitionCurve;
   
-  void transitionToColor(Color targetColor, float rate);
+  void transitionToColor(Color transitionTargetColor, float rate, BMLightTransitionCurve curve);
+  void transitionToColor(Color transitionTargetColor, float rate);
   void transitionTick(unsigned long millis, unsigned int frameDuration);
   bool isTransitioning();
 #if SERIAL_LOGGING
@@ -226,8 +236,9 @@ BMLight::BMLight() : transitionRate(0)
 {
 }
 
-void BMLight::transitionToColor(Color transitionTargetColor, float rate)
+void BMLight::transitionToColor(Color transitionTargetColor, float rate, BMLightTransitionCurve curve)
 {
+ 
   if (ColorIsEqualToColor(color, transitionTargetColor)) {
     return;
   }
@@ -236,14 +247,34 @@ void BMLight::transitionToColor(Color transitionTargetColor, float rate)
   }
   targetColor = transitionTargetColor;
   originalColor = color;
-  transitionRate = rate;
+  transitionRate = rate / 100.0;
   transitionProgress = 0;
+  transitionCurve = curve;
+}
+
+void BMLight::transitionToColor(Color transitionTargetColor, float rate)
+{
+  transitionToColor(transitionTargetColor, rate, BMLightTransitionLinear);
 }
 
 void BMLight::transitionTick(unsigned long millis, unsigned int frameDuration)
 {
   if (transitionRate > 0 && millis > 0) {
-    transitionProgress = MIN(transitionProgress + (millis / (float)frameDuration) * transitionRate / 100, 1.0);
+    transitionProgress = MIN(transitionProgress + (millis / (float)frameDuration) * transitionRate, 1.0);
+    float curvedTransitionProgress = transitionProgress;
+    
+    switch (transitionCurve) {
+      case BMLightTransitionLinear:
+        break;
+      case BMLightTransitionEaseIn:
+        curvedTransitionProgress *= curvedTransitionProgress;
+        break;
+      case BMLightTransitionEaseOut:
+        curvedTransitionProgress = 1 - curvedTransitionProgress;
+        curvedTransitionProgress *= curvedTransitionProgress;
+        curvedTransitionProgress = 1 - curvedTransitionProgress;
+        break;
+    }
     
     color.red = originalColor.red + transitionProgress * (targetColor.red - originalColor.red);
     color.green = originalColor.green + transitionProgress * (targetColor.green - originalColor.green);
@@ -287,7 +318,6 @@ private:
   
   // Mode specific options
   float _frameDurationMultiplier;
-  bool _curveBlackIntensity;
   int _automaticColorsCount;
   
   // Mode specific data
@@ -327,24 +357,8 @@ void BMScene::updateStrand()
 {
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
-    int index = (_directionIsReversed ? _lightCount - i : i);
-    BMLight *light = _lights[index];
+    BMLight *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
-    
-    if (_curveBlackIntensity) {
-      // Curve light intensity along a parabola. This helps fades to and from black appear more clearly for some patterns
-      red /= 255;
-      red *= red;
-      red *= 255;
-    
-      green /= 255;
-      green *= green;
-      green *= 255;
-  
-      blue /= 255;
-      blue *= blue;
-      blue *= 255;
-    }
     TCL.sendColor(red, green, blue);
   }
   TCL.sendEmptyFrame();
@@ -435,10 +449,11 @@ void BMScene::setMode(BMMode mode)
         // When ending lightning bugs, have all the bugs go out
         transitionAll(kNightColor, 10);
         break;
+      default:
+        break;
     }
     
     _mode = mode;
-    _curveBlackIntensity = false;
     _frameDurationMultiplier = 1;
     _automaticColorsCount = 0;
     free(_automaticColors);
@@ -468,12 +483,10 @@ void BMScene::setMode(BMMode mode)
       case BMModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
-        _curveBlackIntensity = true;
         _automaticColorsCount = _lightCount / 10;
         break;
       case BMModeWaves:
       case BMModeOneBigWave: {
-        _curveBlackIntensity = true;
         _followLeader = 0;
         _targetColor = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
         _frameDurationMultiplier = 2;
@@ -536,8 +549,8 @@ void BMScene::tick()
   if (!allOff && frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
       case BMModeFollow: {
-        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 5);
-        _followLeader = (_followLeader + 1);
+        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
+        _followLeader += (_directionIsReversed ? -1 : 1);
         if (_followLeader >= _lightCount) {
           _followLeader = _followLeader % _lightCount;
           _followColorIndex = (_followColorIndex + 1) % ARRAY_SIZE(RGBRainbow);
@@ -601,7 +614,6 @@ void BMScene::tick()
       }
       
       case BMModeBounce: {
-        _curveBlackIntensity = true;
         static int direction = 1;
         _lights[_followLeader]->transitionToColor(kBlackColor, 10);
         _followLeader = _followLeader + direction;
@@ -615,14 +627,16 @@ void BMScene::tick()
       case BMModeWaves:
       case BMModeOneBigWave: {
         const unsigned int waveLength = (_mode == BMModeWaves ? 15 : _lightCount);
-        const int transitionRate = 80 / (waveLength / 2.0); // Needs to fade out over the course of half a wave
+        const float transitionRate = 100 / (waveLength / 2.0); // Needs to fade out over the course of half a wave
         
         Color waveColor = getAutomaticColor(0);
         for (int i = 0; i < _lightCount / waveLength; ++i) {
-          _lights[(_followLeader + i * waveLength) % _lightCount]->transitionToColor(waveColor, transitionRate);
-          _lights[(_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount]->transitionToColor(kBlackColor, transitionRate);
+          unsigned int turnOnLeaderIndex = (_followLeader + i * waveLength) % _lightCount;
+          unsigned int turnOffLeaderIndex = (_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
+          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, BMLightTransitionEaseIn);
+          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, BMLightTransitionEaseOut);
         }
-        _followLeader = (_followLeader + 1) % _lightCount;
+        _followLeader = (_followLeader + (_directionIsReversed ? -1 : 1)) % _lightCount;
         break;
       }
       
@@ -667,7 +681,22 @@ void BMScene::tick()
             
             nearDistance1 = MIN(nearDistance1, halfWave);
             nearDistance2 = MIN(nearDistance2, halfWave);
-            Color c = ColorWithInterpolatedColors(color1, color2, (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
+            Color c = ColorWithInterpolatedColors(color1, color2, 
+                                                  (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 
+                                                  100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
+            // FIXME: Curve black intensity
+//            c.red /= 255;
+//            c.red *= c.red;
+//            c.red *= 255;
+//          
+//            c.green /= 255;
+//            c.green *= c.green;
+//            c.green *= 255;
+//        
+//            c.blue /= 255;
+//            c.blue *= c.blue;
+//            c.blue *= 255;
+            
             _lights[i]->color = c;
           } else {
             _lights[i]->color = kBlackColor;
@@ -707,8 +736,9 @@ void BMScene::tick()
   }
   
   // Fade transitions
+  static const float sixtyFPSDelay = 1000/60.;
   for (int i = 0; i < _lightCount; ++i) {  
-    _lights[i]->transitionTick(tickTime, frameDuration * _frameDurationMultiplier);
+    _lights[i]->transitionTick(sixtyFPSDelay, frameDuration * _frameDurationMultiplier);
   }
   
   // Automatic colors
@@ -727,19 +757,22 @@ void BMScene::tick()
 #ifndef TEST_MODE
   if (time - _modeStart > (unsigned long long)TRANSITION_TIME * 1000) {
     setMode(randomMode());
-  }
+  } else {
 #endif
-  float newFrameDuration = PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration);
-  if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
-    frameDuration = newFrameDuration;
-    frameDurationFloat = newFrameDuration;
-//#ifndef TEST_MODE
-    // Switch out of modes that are too slow or fast for the new frameDuration
-    DelayRange range = rangeForMode(_mode);
-    if (newFrameDuration < range.low || newFrameDuration > range.high) {
-      setMode(randomMode());
+    float newFrameDuration = PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration);
+    if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
+      frameDuration = newFrameDuration;
+      frameDurationFloat = newFrameDuration;
+#ifndef TEST_MODE
+      // Switch out of modes that are too slow or fast for the new frameDuration
+      DelayRange range = rangeForMode(_mode);
+      if (newFrameDuration < range.low || newFrameDuration > range.high) {
+        setMode(randomMode());
+      }
+#ifndef TEST_MODE
     }
-//#endif
+#endif
+#endif
   }
   
   // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres
@@ -759,8 +792,7 @@ void setup()
 #if SERIAL_LOGGING
   Serial.begin(9600);
 #endif
-  
-  randomSeed(analogRead(A4));
+
   TCL.begin();
   TCL.setupDeveloperShield();
   
