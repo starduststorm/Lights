@@ -28,7 +28,7 @@
 
 #define MODE_DIAL TCL_POT1
 
-static const unsigned int LED_COUNT = 150;
+static const unsigned int LED_COUNT = 200;
 
 float PotentiometerReadf(int pin, float rangeMin, float rangeMax)
 {
@@ -160,7 +160,6 @@ typedef enum {
   BMLightTransitionEaseOut,
 } BMLightTransitionCurve;
 
-
 #if SERIAL_LOGGING
 void PrintColor(Color c)
 {
@@ -173,6 +172,16 @@ void PrintColor(Color c)
   Serial.print(")");
 }
 #endif
+
+void logf(const char *format, ...)
+{
+  char buf[100] = {0};
+  va_list argptr;
+  va_start(argptr, format);
+  vsnprintf(buf, 100, format, argptr); // don't have vasprintf
+  va_end(argptr);
+  Serial.println(buf);
+}
 
 typedef enum {
   BMModeFollow = 0,
@@ -223,7 +232,7 @@ public:
   
   void transitionToColor(Color transitionTargetColor, float rate, BMLightTransitionCurve curve);
   void transitionToColor(Color transitionTargetColor, float rate);
-  void transitionTick(unsigned long millis, unsigned int frameDuration);
+  void transitionTick(float multiplier);
   bool isTransitioning();
 #if SERIAL_LOGGING
   void printDescription();
@@ -257,10 +266,10 @@ void BMLight::transitionToColor(Color transitionTargetColor, float rate)
   transitionToColor(transitionTargetColor, rate, BMLightTransitionLinear);
 }
 
-void BMLight::transitionTick(unsigned long millis, unsigned int frameDuration)
+void BMLight::transitionTick(float multiplier)
 {
   if (transitionRate > 0 && millis > 0) {
-    transitionProgress = MIN(transitionProgress + (millis / (float)frameDuration) * transitionRate, 1.0);
+    transitionProgress = MIN(transitionProgress + multiplier * transitionRate, 1.0);
     float curvedTransitionProgress = transitionProgress;
     
     switch (transitionCurve) {
@@ -276,9 +285,9 @@ void BMLight::transitionTick(unsigned long millis, unsigned int frameDuration)
         break;
     }
     
-    color.red = originalColor.red + transitionProgress * (targetColor.red - originalColor.red);
-    color.green = originalColor.green + transitionProgress * (targetColor.green - originalColor.green);
-    color.blue = originalColor.blue + transitionProgress * (targetColor.blue - originalColor.blue);
+    color.red = originalColor.red + curvedTransitionProgress * (targetColor.red - originalColor.red);
+    color.green = originalColor.green + curvedTransitionProgress * (targetColor.green - originalColor.green);
+    color.blue = originalColor.blue + curvedTransitionProgress * (targetColor.blue - originalColor.blue);
     
     if (transitionProgress >= 1) {
       transitionRate = 0;
@@ -295,7 +304,7 @@ bool BMLight::isTransitioning()
 void BMLight::printDescription()
 {
   char buf[20];
-  sprintf(buf, "%p", this);
+  snprintf(buf, 20, "%p", this);
   Serial.print("<Light ");
   Serial.print(buf);
   Serial.print(" isTransitioning = ");
@@ -551,8 +560,8 @@ void BMScene::tick()
       case BMModeFollow: {
         _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
         _followLeader += (_directionIsReversed ? -1 : 1);
-        if (_followLeader >= _lightCount) {
-          _followLeader = _followLeader % _lightCount;
+        if (_followLeader < 0 || _followLeader >= _lightCount) {
+          _followLeader = (_followLeader + _lightCount) % _lightCount;
           _followColorIndex = (_followColorIndex + 1) % ARRAY_SIZE(RGBRainbow);
         }
         break;
@@ -627,7 +636,8 @@ void BMScene::tick()
       case BMModeWaves:
       case BMModeOneBigWave: {
         const unsigned int waveLength = (_mode == BMModeWaves ? 15 : _lightCount);
-        const float transitionRate = 100 / (waveLength / 2.0); // Needs to fade out over the course of half a wave
+        // Needs to fade out over less than half a wave, so there are some off in the middle.
+        const float transitionRate = 80 / (waveLength / 2.0);
         
         Color waveColor = getAutomaticColor(0);
         for (int i = 0; i < _lightCount / waveLength; ++i) {
@@ -636,7 +646,8 @@ void BMScene::tick()
           _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, BMLightTransitionEaseIn);
           _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, BMLightTransitionEaseOut);
         }
-        _followLeader = (_followLeader + (_directionIsReversed ? -1 : 1)) % _lightCount;
+        _followLeader += (_directionIsReversed ? -1 : 1);
+        _followLeader = (_followLeader + _lightCount) % _lightCount;
         break;
       }
       
@@ -736,9 +747,9 @@ void BMScene::tick()
   }
   
   // Fade transitions
-  static const float sixtyFPSDelay = 1000/60.;
-  for (int i = 0; i < _lightCount; ++i) {  
-    _lights[i]->transitionTick(sixtyFPSDelay, frameDuration * _frameDurationMultiplier);
+  float transitionMultiplier = (tickTime / ((float)frameDuration * _frameDurationMultiplier));
+  for (int i = 0; i < _lightCount; ++i) {
+    _lights[i]->transitionTick(transitionMultiplier);
   }
   
   // Automatic colors
@@ -759,7 +770,7 @@ void BMScene::tick()
     setMode(randomMode());
   } else {
 #endif
-    float newFrameDuration = PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration);
+    float newFrameDuration = PotentiometerReadf(TCL_POT2, 1, kMaxFrameDuration);
     if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
       frameDuration = newFrameDuration;
       frameDurationFloat = newFrameDuration;
