@@ -28,7 +28,7 @@
 
 #define MODE_DIAL TCL_POT1
 
-static const unsigned int LED_COUNT = 200;
+static const unsigned int LED_COUNT = 250;
 
 float PotentiometerReadf(int pin, float rangeMin, float rangeMax)
 {
@@ -247,10 +247,6 @@ BMLight::BMLight() : transitionRate(0)
 
 void BMLight::transitionToColor(Color transitionTargetColor, float rate, BMLightTransitionCurve curve)
 {
- 
-  if (ColorIsEqualToColor(color, transitionTargetColor)) {
-    return;
-  }
   if (rate <= 0) {
     rate = 1;
   }
@@ -362,12 +358,40 @@ public:
 
 #pragma mark - Private
 
+float getBrightness()
+{
+  static float brightnessAdjustment = 1.0;
+  static int brightMin = 200;
+  static int brightMax = 900;
+  int val = analogRead(TCL_POT3);
+  if (val < brightMin) {
+    brightMin = val;
+  }
+  if (val > brightMax) {
+    brightMax = val;
+  }
+  
+  static int lastChangeVal = -1.0;
+  if (abs(val - lastChangeVal) > 40) {
+    brightnessAdjustment = (val - brightMin) / (float)brightMax;
+    lastChangeVal = val;
+  }
+  return brightnessAdjustment;
+}
+
 void BMScene::updateStrand()
 {
+  float brightnessAdjustment = getBrightness();
+  
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
     BMLight *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
+    
+    red *= brightnessAdjustment;
+    green *= brightnessAdjustment;
+    blue *= brightnessAdjustment;
+    
     TCL.sendColor(red, green, blue);
   }
   TCL.sendEmptyFrame();
@@ -524,7 +548,7 @@ void BMScene::tick()
   if (digitalRead(TCL_SWITCH2) == LOW) {
     if (!allOff) {
       for (int i = 0; i < _lightCount; ++i) {
-        _lights[i]->transitionToColor(kBlackColor, 3);
+        _lights[i]->transitionToColor(kBlackColor, 3, BMLightTransitionEaseOut);
       }
       allOff = true;
     }
