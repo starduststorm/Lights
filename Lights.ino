@@ -589,10 +589,16 @@ void BMScene::tick()
       }
       allOff = true;
     }
-    if (!_lights[0]->isTransitioning()) {
+    if (_lights[0]->isTransitioning()) {
+      for (int i = 0; i < _lightCount; ++i) {
+        _lights[i]->transitionTick(1);
+      }
+      updateStrand();
+    } else {
       // Just sleep after we're done fading
       delay(100);
     }
+    return;
   } else {
     allOff = false;
   }
@@ -616,7 +622,7 @@ void BMScene::tick()
   }
 #endif
   
-  if (!allOff && frameTime > frameDuration * _frameDurationMultiplier) {
+  if (frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
       case BMModeFollow: {
         _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
