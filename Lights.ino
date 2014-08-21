@@ -28,6 +28,7 @@
 
 #define BRIGHTNESS_DIAL TCL_POT3
 #define MODE_DIAL TCL_POT1
+#define SOUND_DIAL TCL_POT4
 
 static const unsigned int LED_COUNT = 250;
 
@@ -107,7 +108,7 @@ static const Color kMagentaColor = (Color){0xFF, 0, 0xFF};
 static const Color kWhiteColor = (Color){0xFF, 0xFF, 0xFF};
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
-Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor, kWhiteColor};
+Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor};
 
 extern int __bss_end;
 extern void *__brkval;
@@ -339,6 +340,7 @@ private:
   float _transitionProgress;
   Color _targetColor;
   bool _directionIsReversed;
+  unsigned int _soundPeak;
   
   void applyAll(Color c);
   void transitionAll(Color c, float rate);
@@ -384,16 +386,41 @@ void BMScene::updateStrand()
 {
   float brightnessAdjustment = getBrightness();
   
+  float soundSensitivity = PotentiometerRead(SOUND_DIAL, 10, 204);
+  bool useSound = soundSensitivity < 200;
+  float soundMultiplier;
+  if (useSound) {
+    const int pin = 15;
+    unsigned int soundReading = analogRead(pin);
+    
+    if (soundReading > _soundPeak) {
+      _soundPeak = soundReading;
+    } else {
+      _soundPeak *= 0.9;
+    }
+    soundMultiplier = 0.5 + _soundPeak / soundSensitivity;
+  } else {
+    _soundPeak = 0;
+  }
+  
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
     BMLight *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
     
-    red *= brightnessAdjustment;
-    green *= brightnessAdjustment;
-    blue *= brightnessAdjustment;
+    if (useSound) {
+      red *= soundMultiplier;
+      green *= soundMultiplier;
+      blue *= soundMultiplier;
+    }
     
-    TCL.sendColor(red, green, blue);
+    if (brightnessAdjustment < 0.95) {
+      red *= brightnessAdjustment;
+      green *= brightnessAdjustment;
+      blue *= brightnessAdjustment;
+    }
+    
+    TCL.sendColor(min(red, 255), min(green, 255), min(blue, 255));
   }
   TCL.sendEmptyFrame();
 }
@@ -496,6 +523,8 @@ void BMScene::setMode(BMMode mode)
     
     _mode = mode;
     _frameDurationMultiplier = 1;
+    _soundPeak = 0;
+    
     _automaticColorsCount = 0;
     free(_automaticColors);
     _automaticColors = NULL;
@@ -784,14 +813,23 @@ void BMScene::tick()
     _lights[i]->transitionTick(transitionMultiplier);
   }
   
-  // Automatic colors
-  for (int i = 0; i < _automaticColorsCount; ++i) {
-    if (_automaticColorsProgress[i] == 0 || _automaticColorsProgress[i] >= 100) {
-      _automaticColorsProgress[i] = 0;
-      _automaticColors[i] = _automaticColorsTargets[i];
-      _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+  if (digitalRead(TCL_SWITCH1) == HIGH) {
+    // Sound causes color changes
+    // FIXME: This doesn't work. Automatic colors only controls the start of the transition.
+//    for (int i = 0; i < _automaticColorsCount; ++i) {
+//      _automaticColorsProgress[i] = 1;
+//      _automaticColors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+//    }
+  } else {
+    // Automatic colors
+    for (int i = 0; i < _automaticColorsCount; ++i) {
+      if (_automaticColorsProgress[i] == 0 || _automaticColorsProgress[i] >= 100) {
+        _automaticColorsProgress[i] = 0;
+        _automaticColors[i] = _automaticColorsTargets[i];
+        _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+      }
+      _automaticColorsProgress[i] += 1;
     }
-    _automaticColorsProgress[i] += 1;
   }
   
   updateStrand();
