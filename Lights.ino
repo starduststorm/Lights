@@ -26,6 +26,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 
+#define BRIGHTNESS_DIAL TCL_POT3
 #define MODE_DIAL TCL_POT1
 
 static const unsigned int LED_COUNT = 250;
@@ -363,7 +364,7 @@ float getBrightness()
   static float brightnessAdjustment = 1.0;
   static int brightMin = 200;
   static int brightMax = 900;
-  int val = analogRead(TCL_POT3);
+  int val = analogRead(BRIGHTNESS_DIAL);
   if (val < brightMin) {
     brightMin = val;
   }
@@ -424,6 +425,7 @@ BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100
   kModeRanges[BMModeWaves] = kDelayRangeStandard;
   kModeRanges[BMModeOneBigWave] = MakeDelayRange(kMinStandardFrameDuration, 40);
   kModeRanges[BMModeInterferingWaves] = kDelayRangeStandard;
+  kModeRanges[BMModeParity] = MakeDelayRange(0, kMaxStandardFrameDuration);
   
   _lightCount = lightCount;
   _lights = new BMLight*[_lightCount];
@@ -462,15 +464,21 @@ static BMScene *gLights;
 
 BMMode BMScene::randomMode()
 {
-  BMMode newMode;
-  while (1) {
-    newMode = (BMMode)fast_rand(BMModeCount);
-    DelayRange range = rangeForMode(newMode);
+  int matchCount = 0;
+  BMMode matchingModes[BMModeCount];
+  for (int i = 0; i < BMModeCount; ++i) {
+    BMMode mode = (BMMode)i;
+    DelayRange range = rangeForMode(mode);
     if (frameDuration >= range.low && frameDuration <= range.high) {
-      break;
+      matchingModes[matchCount++] = mode;
     }
   }
-  return newMode;
+  if (matchCount > 0) {
+    return matchingModes[fast_rand(matchCount)];
+  } else {
+    // No matches. Pick any mode.
+    return (BMMode)fast_rand(BMModeCount);
+  }
 }
 
 void BMScene::setMode(BMMode mode)
@@ -794,7 +802,7 @@ void BMScene::tick()
     setMode(randomMode());
   } else {
 #endif
-    float newFrameDuration = PotentiometerReadf(TCL_POT2, 1, kMaxFrameDuration);
+    float newFrameDuration = PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration + 1);
     if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
       frameDuration = newFrameDuration;
       frameDurationFloat = newFrameDuration;
