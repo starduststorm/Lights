@@ -16,21 +16,37 @@
 // -----------------------------------------
 
 
-#define SERIAL_LOGGING 0
-#define DEBUG 0
-#define TRANSITION_TIME (90)
-//#define TEST_MODE (BMModeOneBigWave)
+/* Hardware Configuration */
+#define ARDUINO_DUE 1
+#define DEVELOPER_BOARD 0
 
+/* For Developer Board */
+#define BRIGHTNESS_DIAL TCL_POT3
+#define MODE_DIAL TCL_POT1
+#define SOUND_DIAL TCL_POT4
+
+/* Logging */
+#define SERIAL_LOGGING 1
+#define DEBUG 0
+
+/* Options */
+#define TEST_MODE (BMModeFollow)
+#define TRANSITION_TIME (10)
+
+/* Tools */
 #define MIN(x, y) ((x) > (y) ? y : x)
 #define MAX(x, y) ((x) < (y) ? y : x)
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 
-#define BRIGHTNESS_DIAL TCL_POT3
-#define MODE_DIAL TCL_POT1
-#define SOUND_DIAL TCL_POT4
+static const unsigned int LED_COUNT = 100;
 
-static const unsigned int LED_COUNT = 250;
+#if DEVELOPER_BOARD
+static const bool kHasDeveloperBoard = true;
+#else
+static const bool kHasDeveloperBoard = false;
+#endif
+#define FRAME_DURATION 20
 
 float PotentiometerReadf(int pin, float rangeMin, float rangeMax)
 {
@@ -93,19 +109,20 @@ struct Color {
   byte red;
   byte green;
   byte blue;
+  byte filler;
 };
 typedef struct Color Color;
 
-static const Color kBlackColor = (Color){0, 0, 0};
-static const Color kRedColor = (Color){0xFF, 0, 0};
-static const Color kOrangeColor = (Color){0xFF, 0x60, 0x0};
-static const Color kYellowColor = (Color){0xFF, 0xFF, 0};
-static const Color kGreenColor = (Color){0, 0xFF, 0};
-static const Color kCyanColor = (Color){0, 0xFF, 0xFF};
-static const Color kBlueColor = (Color){0, 0, 0xFF};
-static const Color kVioletColor = (Color){0x8E, 0x25, 0xFB};
-static const Color kMagentaColor = (Color){0xFF, 0, 0xFF};
-static const Color kWhiteColor = (Color){0xFF, 0xFF, 0xFF};
+static const Color kBlackColor   = (Color){.red=0,    .green=0,    .blue=0   };
+static const Color kRedColor     = (Color){.red=0xFF, .green=0,    .blue=0   };
+static const Color kOrangeColor  = (Color){.red=0xFF, .green=0x60, .blue=0   };
+static const Color kYellowColor  = (Color){.red=0xFF, .green=0xFF, .blue=0   };
+static const Color kGreenColor   = (Color){.red=0,    .green=0xFF, .blue=0   };
+static const Color kCyanColor    = (Color){.red=0,    .green=0xFF, .blue=0xFF};
+static const Color kBlueColor    = (Color){.red=0,    .green=0,    .blue=0xFF};
+static const Color kVioletColor  = (Color){.red=0x8E, .green=0x25, .blue=0xFB};
+static const Color kMagentaColor = (Color){.red=0xFF, .green=0,    .blue=0xFF};
+static const Color kWhiteColor   = (Color){.red=0xFF, .green=0xFF, .blue=0xFF};
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
 Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor};
@@ -177,23 +194,28 @@ void PrintColor(Color c)
 
 void logf(const char *format, ...)
 {
-  char buf[100] = {0};
+#if SERIAL_LOGGING
+//  char *buf = (char *)calloc(strlen(format) + 200, sizeof(char));
   va_list argptr;
   va_start(argptr, format);
-  vsnprintf(buf, 100, format, argptr); // don't have vasprintf
+  char *buf = NULL;
+  vasprintf(&buf, format, argptr);
+//  vsnprintf(buf, 200, format, argptr); // don't have vasprintf
   va_end(argptr);
   Serial.println(buf);
+  free(buf);
+#endif
 }
 
 typedef enum {
   BMModeFollow = 0,
-  BMModeFire,
-  BMModeBlueFire,
-  BMModeLightningBugs,
   BMModeWaves,
   BMModeOneBigWave,
   BMModeParity,
   BMModeCount,
+  BMModeFire,
+  BMModeBlueFire,
+  BMModeLightningBugs,
   BMModeInterferingWaves,
   BMModeBoomResponder,
   BMModeBounce,
@@ -266,7 +288,7 @@ void BMLight::transitionToColor(Color transitionTargetColor, float rate)
 
 void BMLight::transitionTick(float multiplier)
 {
-  if (transitionRate > 0 && millis > 0) {
+  if (transitionRate > 0) {
     transitionProgress = MIN(transitionProgress + multiplier * transitionRate, 1.0);
     float curvedTransitionProgress = transitionProgress;
     
@@ -315,40 +337,41 @@ void BMLight::printDescription()
 
 class BMScene {
 private:
-  unsigned int _lightCount;
+  unsigned int _lightCount=0;
   BMMode _mode;
-  unsigned long _modeStart;
-  unsigned long _lastTick;
-  unsigned long _lastFrame;
+  unsigned long _modeStart=0;
+  unsigned long _lastTick=0;
+  unsigned long _lastFrame=0;
   
   BMLight **_lights;
   
   // Mode specific options
   float _frameDurationMultiplier;
-  int _automaticColorsCount;
+  int _automaticColorsCount=0;
   
   // Mode specific data
-  int _followLeader;
-  float _smoothLeader;
+  int _followLeader=0;
+  float _smoothLeader=0;
   Color _followColor;
-  unsigned int _followColorIndex;
+  unsigned int _followColorIndex=0;
   
   Color *_automaticColors;
   Color *_automaticColorsTargets;
   int *_automaticColorsProgress; // 0-100%
   
-  float _transitionProgress;
+  float _transitionProgress=0;
   Color _targetColor;
   bool _directionIsReversed;
   unsigned int _soundPeak;
   
-  void applyAll(Color c);
+  
   void transitionAll(Color c, float rate);
   
   void updateStrand();
   DelayRange rangeForMode(BMMode mode);
   Color getAutomaticColor(unsigned int i);
 public:
+  void applyAll(Color c);
   void tick();
   BMScene(unsigned int ledCount);
   void setMode(BMMode mode);
@@ -363,6 +386,9 @@ public:
 
 float getBrightness()
 {
+  if (!kHasDeveloperBoard) {
+    return 1.0;
+  }
   static float brightnessAdjustment = 1.0;
   static int brightMin = 200;
   static int brightMax = 900;
@@ -423,6 +449,9 @@ void BMScene::updateStrand()
     TCL.sendColor(min(red, 255), min(green, 255), min(blue, 255));
   }
   TCL.sendEmptyFrame();
+  logf("Sent a strand update!");
+  Color color = _lights[_lightCount - 1]->color;
+  logf("Last color was (%u, %u, %u)", color.red, color.green, color.blue);
 }
 
 #pragma mark - Convenience
@@ -582,7 +611,7 @@ void BMScene::setMode(BMMode mode)
 void BMScene::tick()
 {
   static bool allOff = false;
-  if (digitalRead(TCL_SWITCH2) == LOW) {
+  if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!allOff) {
       for (int i = 0; i < _lightCount; ++i) {
         _lights[i]->transitionToColor(kBlackColor, 3, BMLightTransitionEaseOut);
@@ -625,12 +654,32 @@ void BMScene::tick()
   if (frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
       case BMModeFollow: {
-        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
-        _followLeader += (_directionIsReversed ? -1 : 1);
-        if (_followLeader < 0 || _followLeader >= _lightCount) {
-          _followLeader = (_followLeader + _lightCount) % _lightCount;
-          _followColorIndex = (_followColorIndex + 1) % ARRAY_SIZE(RGBRainbow);
-        }
+        logf("In ::tick for BMModeFollow");
+        delay(1000);
+        
+        Color c = RGBRainbow[_followColorIndex];
+        logf("color = (%i, %i, %i)", (int)c.red, (int)c.green, (int)c.blue);
+        
+        
+        
+        
+        
+        // FIXME: I have a stack smasher somewhere before the first time this is hit.
+        
+        
+        
+        
+        
+        logf("_followLeader = %i, _lights = %p", _followLeader, _lights);
+        logf("_lights = %p, _followLeader = %i", _lights, _followLeader);
+//        logf("_lights[_followLeader] = %p", _lights[_followLeader]);
+//        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
+        
+//        _followLeader += (_directionIsReversed ? -1 : 1);
+//        if (_followLeader < 0 || _followLeader >= _lightCount) {
+//          _followLeader = (_followLeader + _lightCount) % _lightCount;
+//          _followColorIndex = (_followColorIndex + 1) % ARRAY_SIZE(RGBRainbow);
+//        }
         break;
       }
       
@@ -652,7 +701,7 @@ void BMScene::tick()
               Color color2 = (fast_rand(2) ? c1 : c2);
               if (choice < 95) {
                 Color mixedColor = ColorWithInterpolatedColors(light->color, color2, fast_rand(101), fast_rand(101));
-                light->transitionToColor(mixedColor, 40);
+                light->transitionToColor(mixedColor, 30);
               } else {
                 light->color = color2;
               }
@@ -786,7 +835,7 @@ void BMScene::tick()
      
      case BMModeParity:
        if (!_lights[0]->isTransitioning()) {
-         const int parityCount = PotentiometerRead(MODE_DIAL, 1, 5);
+         const int parityCount = (kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
          Color colors[parityCount];
          for (int i = 0; i < parityCount; ++i) {
            colors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
@@ -819,7 +868,7 @@ void BMScene::tick()
     _lights[i]->transitionTick(transitionMultiplier);
   }
   
-  if (digitalRead(TCL_SWITCH1) == HIGH) {
+  if (kHasDeveloperBoard && digitalRead(TCL_SWITCH1) == HIGH) {
     // Sound causes color changes
     // FIXME: This doesn't work. Automatic colors only controls the start of the transition.
 //    for (int i = 0; i < _automaticColorsCount; ++i) {
@@ -846,7 +895,7 @@ void BMScene::tick()
     setMode(randomMode());
   } else {
 #endif
-    float newFrameDuration = PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration + 1);
+    float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration + 1) : FRAME_DURATION);
     if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
       frameDuration = newFrameDuration;
       frameDurationFloat = newFrameDuration;
@@ -864,7 +913,7 @@ void BMScene::tick()
   
   // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres
   static bool button1Down = true;
-  if (digitalRead(TCL_MOMENTARY1) == LOW) {
+  if (kHasDeveloperBoard && digitalRead(TCL_MOMENTARY1) == LOW) {
     if (!button1Down) {
       setMode((BMMode)((_mode + 1) % BMModeCount));
       button1Down = true;
@@ -877,11 +926,31 @@ void BMScene::tick()
 void setup()
 {
 #if SERIAL_LOGGING
-  Serial.begin(9600);
+  int baud = 9600;
+  Serial.begin(baud);
+  logf("START");
+//  Serial.println("START");
+//  Serial.print(millis());
+//  Serial.print(" millis: Serial logging started at ");
+//  Serial.print(baud);
+//  Serial.println(" baud");
+  logf("%ul millis: Serial logging started at %i baud", millis(), baud);
 #endif
 
+#if ARDUINO_DUE
+  // The Due is much faster, needs a higher clock divider to run the SPI at the right rate.
+  // ATMega runs at clock div 2 for 4 MHz, the Due runs at 84 MHz, so needs clock div 42 for 4 MHz.
+  SPI.begin();
+  SPI.setBitOrder(MSBFIRST);
+  SPI.setDataMode(SPI_MODE0);
+  SPI.setClockDivider(42);
+#else
   TCL.begin();
+#endif
+  
+#if DEVELOPER_BOARD
   TCL.setupDeveloperShield();
+#endif
   
   gLights = new BMScene(LED_COUNT);
 #ifdef TEST_MODE
@@ -894,6 +963,42 @@ void setup()
 
 void loop()
 {
+  static int lead = 0;
+  static int c = 0;
+  Color color = NamedRainbow[c];
+  TCL.sendEmptyFrame();
+  for (int i = 0; i < 100; ++i) {
+    float distance = ((lead - i + 100) % 100) / 100.0;
+    
+    float red = color.red * (1 - distance);
+    float green = color.green *  (1 - distance);
+    float blue = color.blue * (1 - distance);
+    
+    TCL.sendColor(min(red, 255), min(green, 255), min(blue, 255));
+  }
+  TCL.sendEmptyFrame();
+  lead++;
+  if (lead >= 100) {
+    lead = 0;
+    Color newColor = NamedRainbow[c];
+    c = (c + 1) % ARRAY_SIZE(NamedRainbow);
+    
+    logf("NEXT COLOR index %i/%i = (%i, %i, %i)", (int)(c + 1), (int)ARRAY_SIZE(NamedRainbow), (int)newColor.red, (int)newColor.green, (int)newColor.blue);
+    logf("Red = (%i, %i, %i)", (int)kRedColor.red, (int)kRedColor.green, (int)kRedColor.blue);
+    logf("sizeof(Color) = %i", (int)sizeof(Color));
+  }
+  
+  return;
+  
+  
+  
+#if SERIAL_LOGGING
+  static int loopCount2 = 0;
+  if (loopCount2 % 100 == 0)
+    logf("loop #%i", loopCount2);
+  loopCount2++;
+#endif
+  
 #if DEBUG && SERIAL_LOGGING
   static int loopCount = 0;
   if (loopCount++ > 1000) {
@@ -903,8 +1008,8 @@ void loop()
     loopCount = 0;
   }
 #endif
-    
+  
   gLights->tick();
+  logf("got to end of tick");
 }
-
 
