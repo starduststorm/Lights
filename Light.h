@@ -6,15 +6,15 @@
 #define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 
 typedef enum {
-  BMLightTransitionLinear = 0,
-  BMLightTransitionEaseIn,
-  BMLightTransitionEaseOut,
-} BMLightTransitionCurve;
+  LightTransitionLinear = 0,
+  LightTransitionEaseIn,
+  LightTransitionEaseOut,
+} LightTransitionCurve;
 
 
-class BMLight {
+class Light {
 public:
-  BMLight();
+  Light();
   
   Color color;
   Color targetColor;
@@ -22,9 +22,9 @@ public:
   
   float transitionProgress; // [0, 1]
   float transitionRate; // percentage to transition per frame
-  BMLightTransitionCurve transitionCurve;
+  LightTransitionCurve transitionCurve;
   
-  void transitionToColor(Color transitionTargetColor, float rate, BMLightTransitionCurve curve);
+  void transitionToColor(Color transitionTargetColor, float rate, LightTransitionCurve curve);
   void transitionToColor(Color transitionTargetColor, float rate);
   void transitionTick(float multiplier);
   bool isTransitioning();
@@ -35,11 +35,11 @@ public:
   int modeState; // For the Scene mode to use to store state
 };
 
-BMLight::BMLight() : transitionRate(0)
+Light::Light() : transitionRate(0)
 {
 }
 
-void BMLight::transitionToColor(Color transitionTargetColor, float rate, BMLightTransitionCurve curve)
+void Light::transitionToColor(Color transitionTargetColor, float rate, LightTransitionCurve curve)
 {
   if (rate <= 0) {
     rate = 1;
@@ -51,24 +51,24 @@ void BMLight::transitionToColor(Color transitionTargetColor, float rate, BMLight
   transitionCurve = curve;
 }
 
-void BMLight::transitionToColor(Color transitionTargetColor, float rate)
+void Light::transitionToColor(Color transitionTargetColor, float rate)
 {
-  transitionToColor(transitionTargetColor, rate, BMLightTransitionLinear);
+  transitionToColor(transitionTargetColor, rate, LightTransitionLinear);
 }
 
-void BMLight::transitionTick(float multiplier)
+void Light::transitionTick(float multiplier)
 {
   if (transitionRate > 0) {
     transitionProgress = MIN(transitionProgress + multiplier * transitionRate, 1.0);
     float curvedTransitionProgress = transitionProgress;
     
     switch (transitionCurve) {
-      case BMLightTransitionLinear:
+      case LightTransitionLinear:
         break;
-      case BMLightTransitionEaseIn:
+      case LightTransitionEaseIn:
         curvedTransitionProgress *= curvedTransitionProgress;
         break;
-      case BMLightTransitionEaseOut:
+      case LightTransitionEaseOut:
         curvedTransitionProgress = 1 - curvedTransitionProgress;
         curvedTransitionProgress *= curvedTransitionProgress;
         curvedTransitionProgress = 1 - curvedTransitionProgress;
@@ -85,13 +85,13 @@ void BMLight::transitionTick(float multiplier)
   }
 }
 
-bool BMLight::isTransitioning()
+bool Light::isTransitioning()
 {
   return (transitionRate != 0);
 }
 
 #if SERIAL_LOGGING
-void BMLight::printDescription()
+void Light::printDescription()
 {
   char buf[20];
   snprintf(buf, 20, "%p", this);

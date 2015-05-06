@@ -1,18 +1,18 @@
 
 
 typedef enum {
-  BMModeFollow = 0,
-  BMModeWaves,
-  BMModeOneBigWave,
-  BMModeParity,
-  BMModeCount,
-  BMModeFire,
-  BMModeBlueFire,
-  BMModeLightningBugs,
-  BMModeInterferingWaves,
-  BMModeBoomResponder,
-  BMModeBounce,
-} BMMode;
+  ModeFollow = 0,
+  ModeWaves,
+  ModeOneBigWave,
+  ModeParity,
+  ModeCount,
+  ModeFire,
+  ModeBlueFire,
+  ModeLightningBugs,
+  ModeInterferingWaves,
+  ModeBoomResponder,
+  ModeBounce,
+} Mode;
 
 struct DelayRange {
   unsigned int low;
@@ -33,21 +33,21 @@ static const unsigned int kMaxStandardFrameDuration = kMaxFrameDuration - 2;
 static const unsigned int kMinStandardFrameDuration = 2;
 static const DelayRange kDelayRangeStandard = MakeDelayRange(kMinStandardFrameDuration, kMaxStandardFrameDuration);
 
-static DelayRange kModeRanges[BMModeCount] = {0};
+static DelayRange kModeRanges[ModeCount] = {0};
 
 
 
 #pragma mark - 
 
-class BMScene {
+class Scene {
 private:
   unsigned int _lightCount=0;
-  BMMode _mode;
+  Mode _mode;
   unsigned long _modeStart=0;
   unsigned long _lastTick=0;
   unsigned long _lastFrame=0;
   
-  BMLight **_lights;
+  Light **_lights;
   
   // Mode specific options
   float _frameDurationMultiplier;
@@ -72,15 +72,15 @@ private:
   void transitionAll(Color c, float rate);
   
   void updateStrand();
-  DelayRange rangeForMode(BMMode mode);
+  DelayRange rangeForMode(Mode mode);
   Color getAutomaticColor(unsigned int i);
 public:
   void applyAll(Color c);
   void tick();
-  BMScene(unsigned int ledCount);
-  void setMode(BMMode mode);
-  ~BMScene();
-  BMMode randomMode();
+  Scene(unsigned int ledCount);
+  void setMode(Mode mode);
+  ~Scene();
+  Mode randomMode();
   
   unsigned int frameDuration; // millisecond delay between frames
   float frameDurationFloat; // Needed to compare values to current potentiometer to ignore noise
@@ -112,7 +112,7 @@ float getBrightness()
   return brightnessAdjustment;
 }
 
-void BMScene::updateStrand()
+void Scene::updateStrand()
 {
   float brightnessAdjustment = getBrightness();
   
@@ -135,7 +135,7 @@ void BMScene::updateStrand()
   
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
-    BMLight *light = _lights[i];
+    Light *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
     
     if (useSound) {
@@ -160,14 +160,14 @@ void BMScene::updateStrand()
 
 #pragma mark - Convenience
 
-void BMScene::applyAll(Color c)
+void Scene::applyAll(Color c)
 {
   for (int i = 0; i < _lightCount; ++i) {
     _lights[i]->color = c;
   }
 }
 
-void BMScene::transitionAll(Color c, float rate)
+void Scene::transitionAll(Color c, float rate)
 {
   for (int i = 0; i < _lightCount; ++i) {
     _lights[i]->transitionToColor(c, rate);
@@ -176,21 +176,21 @@ void BMScene::transitionAll(Color c, float rate)
 
 #pragma mark - Public
 
-BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100)
+Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
 {
-  kModeRanges[BMModeFollow] = kDelayRangeStandard;
-  kModeRanges[BMModeFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
-  kModeRanges[BMModeBlueFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
-  kModeRanges[BMModeLightningBugs] = MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration);
-  kModeRanges[BMModeWaves] = kDelayRangeStandard;
-  kModeRanges[BMModeOneBigWave] = MakeDelayRange(kMinStandardFrameDuration, 40);
-  kModeRanges[BMModeInterferingWaves] = kDelayRangeStandard;
-  kModeRanges[BMModeParity] = MakeDelayRange(0, kMaxStandardFrameDuration);
+  kModeRanges[ModeFollow] = kDelayRangeStandard;
+  kModeRanges[ModeFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
+  kModeRanges[ModeBlueFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
+  kModeRanges[ModeLightningBugs] = MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration);
+  kModeRanges[ModeWaves] = kDelayRangeStandard;
+  kModeRanges[ModeOneBigWave] = MakeDelayRange(kMinStandardFrameDuration, 40);
+  kModeRanges[ModeInterferingWaves] = kDelayRangeStandard;
+  kModeRanges[ModeParity] = MakeDelayRange(0, kMaxStandardFrameDuration);
   
   _lightCount = lightCount;
-  _lights = new BMLight*[_lightCount];
+  _lights = new Light*[_lightCount];
   for (int i = 0; i < _lightCount; ++i) {
-    _lights[i] = new BMLight();
+    _lights[i] = new Light();
   }
   _lastTick = millis();
   _lastFrame = _lastTick;
@@ -198,16 +198,16 @@ BMScene::BMScene(unsigned int lightCount) : _mode((BMMode)-1), frameDuration(100
   applyAll(kBlackColor);
 }
 
-BMScene::~BMScene()
+Scene::~Scene()
 {
 }
 
-Color BMScene::getAutomaticColor(unsigned int i)
+Color Scene::getAutomaticColor(unsigned int i)
 {
   return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i], 100);
 }
 
-DelayRange BMScene::rangeForMode(BMMode mode)
+DelayRange Scene::rangeForMode(Mode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
     if (kModeRanges[mode].low == 0 && kModeRanges[mode].high == 0) {
@@ -220,14 +220,14 @@ DelayRange BMScene::rangeForMode(BMMode mode)
 }
 
 static const Color kNightColor = MakeColor(0, 0, 0x10);
-static BMScene *gLights;
+static Scene *gLights;
 
-BMMode BMScene::randomMode()
+Mode Scene::randomMode()
 {
   int matchCount = 0;
-  BMMode matchingModes[BMModeCount];
-  for (int i = 0; i < BMModeCount; ++i) {
-    BMMode mode = (BMMode)i;
+  Mode matchingModes[ModeCount];
+  for (int i = 0; i < ModeCount; ++i) {
+    Mode mode = (Mode)i;
     DelayRange range = rangeForMode(mode);
     if (frameDuration >= range.low && frameDuration <= range.high) {
       matchingModes[matchCount++] = mode;
@@ -237,16 +237,16 @@ BMMode BMScene::randomMode()
     return matchingModes[fast_rand(matchCount)];
   } else {
     // No matches. Pick any mode.
-    return (BMMode)fast_rand(BMModeCount);
+    return (Mode)fast_rand(ModeCount);
   }
 }
 
-void BMScene::setMode(BMMode mode)
+void Scene::setMode(Mode mode)
 {
   if (mode != _mode) {
     // Transition away from old mode
     switch (_mode) {
-      case BMModeLightningBugs:
+      case ModeLightningBugs:
         // When ending lightning bugs, have all the bugs go out
         transitionAll(kNightColor, 10);
         break;
@@ -272,24 +272,24 @@ void BMScene::setMode(BMMode mode)
     }
     
     switch (_mode) {
-      case BMModeBounce:
-      case BMModeFollow: {
+      case ModeBounce:
+      case ModeFollow: {
         // When starting follow, there are sometimes single lights stuck on until the follow lead gets there. 
         // This keeps it from looking odd and too dark
         Color fillColor = ColorWithInterpolatedColors(RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))], kBlackColor, fast_rand(20, 60) / 10.0, 100);
         transitionAll(fillColor, 5);
         break;
       }
-      case BMModeLightningBugs:
+      case ModeLightningBugs:
         transitionAll(kNightColor, 10);
         break;
-      case BMModeInterferingWaves:
+      case ModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
         _automaticColorsCount = _lightCount / 10;
         break;
-      case BMModeWaves:
-      case BMModeOneBigWave: {
+      case ModeWaves:
+      case ModeOneBigWave: {
         _followLeader = 0;
         _targetColor = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
         _frameDurationMultiplier = 2;
@@ -312,13 +312,13 @@ void BMScene::setMode(BMMode mode)
   _directionIsReversed = (fast_rand(2) == 0);
 }
 
-void BMScene::tick()
+void Scene::tick()
 {
   static bool allOff = false;
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!allOff) {
       for (int i = 0; i < _lightCount; ++i) {
-        _lights[i]->transitionToColor(kBlackColor, 3, BMLightTransitionEaseOut);
+        _lights[i]->transitionToColor(kBlackColor, 3, LightTransitionEaseOut);
       }
       allOff = true;
     }
@@ -357,8 +357,8 @@ void BMScene::tick()
   
   if (frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
-      case BMModeFollow: {
-        logf("In ::tick for BMModeFollow");
+      case ModeFollow: {
+        logf("In ::tick for ModeFollow");
         delay(1000);
         
         Color c = RGBRainbow[_followColorIndex];
@@ -387,13 +387,13 @@ void BMScene::tick()
         break;
       }
       
-      case BMModeFire:
-      case BMModeBlueFire: {
+      case ModeFire:
+      case ModeBlueFire: {
         // Interpolate, fade, and snap between two colors
-        Color c1 = (_mode == BMModeFire ? MakeColor(0xFF, 0x30, 0) : MakeColor(0x30, 0x10, 0xFF));
-        Color c2 = (_mode == BMModeFire ? MakeColor(0xFF, 0x80, 0) : MakeColor(0, 0xB0, 0xFF));
+        Color c1 = (_mode == ModeFire ? MakeColor(0xFF, 0x30, 0) : MakeColor(0x30, 0x10, 0xFF));
+        Color c2 = (_mode == ModeFire ? MakeColor(0xFF, 0x80, 0) : MakeColor(0, 0xB0, 0xFF));
         for (int i = 0; i < _lightCount; ++i) {
-          BMLight *light = _lights[i];
+          Light *light = _lights[i];
           if (!(light->isTransitioning())) {
             long choice = fast_rand(100);
             
@@ -415,9 +415,9 @@ void BMScene::tick()
         break;
       }
       
-      case BMModeLightningBugs: {
+      case ModeLightningBugs: {
         for (int i = 0; i < _lightCount; ++i) {
-          BMLight *light = _lights[i];
+          Light *light = _lights[i];
           if (!light->isTransitioning()) {
             switch (light->modeState) {
               case 1:
@@ -442,7 +442,7 @@ void BMScene::tick()
         break;
       }
       
-      case BMModeBounce: {
+      case ModeBounce: {
         static int direction = 1;
         _lights[_followLeader]->transitionToColor(kBlackColor, 10);
         _followLeader = _followLeader + direction;
@@ -453,9 +453,9 @@ void BMScene::tick()
         break;
       }
       
-      case BMModeWaves:
-      case BMModeOneBigWave: {
-        const unsigned int waveLength = (_mode == BMModeWaves ? 15 : _lightCount);
+      case ModeWaves:
+      case ModeOneBigWave: {
+        const unsigned int waveLength = (_mode == ModeWaves ? 15 : _lightCount);
         // Needs to fade out over less than half a wave, so there are some off in the middle.
         const float transitionRate = 80 / (waveLength / 2.0);
         
@@ -463,15 +463,15 @@ void BMScene::tick()
         for (int i = 0; i < _lightCount / waveLength; ++i) {
           unsigned int turnOnLeaderIndex = (_followLeader + i * waveLength) % _lightCount;
           unsigned int turnOffLeaderIndex = (_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
-          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, BMLightTransitionEaseIn);
-          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, BMLightTransitionEaseOut);
+          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
+          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, LightTransitionEaseOut);
         }
         _followLeader += (_directionIsReversed ? -1 : 1);
         _followLeader = (_followLeader + _lightCount) % _lightCount;
         break;
       }
       
-      case BMModeInterferingWaves: {
+      case ModeInterferingWaves: {
         // FIXME: It's jarring to shift in and out of this mode since it doesn't respect any transitions that were already in effect.
         // Idea: Have the first N passes use overlapping short transitions instead of setting the color.
         const int waveLength = 12;
@@ -537,7 +537,7 @@ void BMScene::tick()
         break;
      }
      
-     case BMModeParity:
+     case ModeParity:
        if (!_lights[0]->isTransitioning()) {
          const int parityCount = (kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
          Color colors[parityCount];
@@ -551,7 +551,7 @@ void BMScene::tick()
        }
        break;
      
-     case BMModeBoomResponder:
+     case ModeBoomResponder:
        for (int i = 0; i < _lightCount; ++i) {
          if (!_lights[i]->isTransitioning()) {
            _lights[i]->transitionToColor(NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))], 10);
@@ -619,7 +619,7 @@ void BMScene::tick()
   static bool button1Down = true;
   if (kHasDeveloperBoard && digitalRead(TCL_MOMENTARY1) == LOW) {
     if (!button1Down) {
-      setMode((BMMode)((_mode + 1) % BMModeCount));
+      setMode((Mode)((_mode + 1) % ModeCount));
       button1Down = true;
     }
   } else {

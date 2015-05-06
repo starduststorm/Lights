@@ -30,7 +30,7 @@
 #define DEBUG 0
 
 /* Options */
-#define TEST_MODE (BMModeFollow)
+#define TEST_MODE (ModeFollow)
 #define TRANSITION_TIME (10)
 #define FRAME_DURATION 20
 
@@ -70,7 +70,7 @@ void setup()
   TCL.setupDeveloperShield();
 #endif
   
-  gLights = new BMScene(LED_COUNT);
+  gLights = new Scene(LED_COUNT);
 #ifdef TEST_MODE
   gLights->setMode(TEST_MODE);
 #else
