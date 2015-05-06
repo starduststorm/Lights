@@ -5,11 +5,11 @@ typedef enum {
   ModeWaves,
   ModeOneBigWave,
   ModeParity,
-  ModeCount,
   ModeFire,
   ModeBlueFire,
   ModeLightningBugs,
   ModeInterferingWaves,
+  ModeCount,
   ModeBoomResponder,
   ModeBounce,
 } Mode;
@@ -35,8 +35,6 @@ static const DelayRange kDelayRangeStandard = MakeDelayRange(kMinStandardFrameDu
 
 static DelayRange kModeRanges[ModeCount] = {0};
 
-
-
 #pragma mark - 
 
 class Scene {
@@ -59,15 +57,14 @@ private:
   Color _followColor;
   unsigned int _followColorIndex=0;
   
-  Color *_automaticColors;
-  Color *_automaticColorsTargets;
-  int *_automaticColorsProgress; // 0-100%
+  Color *_automaticColors = NULL;
+  Color *_automaticColorsTargets = NULL;
+  int *_automaticColorsProgress = NULL; // 0-100%
   
   float _transitionProgress=0;
   Color _targetColor;
   bool _directionIsReversed;
   unsigned int _soundPeak;
-  
   
   void transitionAll(Color c, float rate);
   
@@ -153,9 +150,6 @@ void Scene::updateStrand()
     TCL.sendColor(min(red, 255), min(green, 255), min(blue, 255));
   }
   TCL.sendEmptyFrame();
-  logf("Sent a strand update!");
-  Color color = _lights[_lightCount - 1]->color;
-  logf("Last color was (%u, %u, %u)", color.red, color.green, color.blue);
 }
 
 #pragma mark - Convenience
@@ -176,16 +170,23 @@ void Scene::transitionAll(Color c, float rate)
 
 #pragma mark - Public
 
+void setDelayRangeForMode(DelayRange delayRange, Mode mode)
+{
+  if (mode < ARRAY_SIZE(kModeRanges)) {
+    kModeRanges[mode] = delayRange;
+  }
+}
+
 Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
 {
-  kModeRanges[ModeFollow] = kDelayRangeStandard;
-  kModeRanges[ModeFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
-  kModeRanges[ModeBlueFire] = MakeDelayRange(50, kMaxStandardFrameDuration);
-  kModeRanges[ModeLightningBugs] = MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration);
-  kModeRanges[ModeWaves] = kDelayRangeStandard;
-  kModeRanges[ModeOneBigWave] = MakeDelayRange(kMinStandardFrameDuration, 40);
-  kModeRanges[ModeInterferingWaves] = kDelayRangeStandard;
-  kModeRanges[ModeParity] = MakeDelayRange(0, kMaxStandardFrameDuration);
+  setDelayRangeForMode(kDelayRangeStandard, ModeFollow);
+  setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModeFire);
+  setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModeBlueFire);
+  setDelayRangeForMode(MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration), ModeLightningBugs);
+  setDelayRangeForMode(kDelayRangeStandard, ModeWaves);
+  setDelayRangeForMode(MakeDelayRange(kMinStandardFrameDuration, 40), ModeOneBigWave);
+  setDelayRangeForMode(kDelayRangeStandard, ModeInterferingWaves);
+  setDelayRangeForMode(MakeDelayRange(0, kMaxStandardFrameDuration), ModeParity);
   
   _lightCount = lightCount;
   _lights = new Light*[_lightCount];
@@ -218,9 +219,6 @@ DelayRange Scene::rangeForMode(Mode mode)
   }
   return kDelayRangeStandard;
 }
-
-static const Color kNightColor = MakeColor(0, 0, 0x10);
-static Scene *gLights;
 
 Mode Scene::randomMode()
 {
@@ -358,32 +356,14 @@ void Scene::tick()
   if (frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
       case ModeFollow: {
-        logf("In ::tick for ModeFollow");
-        delay(1000);
-        
         Color c = RGBRainbow[_followColorIndex];
-        logf("color = (%i, %i, %i)", (int)c.red, (int)c.green, (int)c.blue);
+        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
         
-        
-        
-        
-        
-        // FIXME: I have a stack smasher somewhere before the first time this is hit.
-        
-        
-        
-        
-        
-        logf("_followLeader = %i, _lights = %p", _followLeader, _lights);
-        logf("_lights = %p, _followLeader = %i", _lights, _followLeader);
-//        logf("_lights[_followLeader] = %p", _lights[_followLeader]);
-//        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
-        
-//        _followLeader += (_directionIsReversed ? -1 : 1);
-//        if (_followLeader < 0 || _followLeader >= _lightCount) {
-//          _followLeader = (_followLeader + _lightCount) % _lightCount;
-//          _followColorIndex = (_followColorIndex + 1) % ARRAY_SIZE(RGBRainbow);
-//        }
+        _followLeader += (_directionIsReversed ? -1 : 1);
+        if (_followLeader < 0 || _followLeader >= _lightCount) {
+          _followLeader = (_followLeader + _lightCount) % _lightCount;
+          _followColorIndex = (_followColorIndex + 1) % ARRAY_SIZE(RGBRainbow);
+        }
         break;
       }
       
@@ -515,18 +495,21 @@ void Scene::tick()
             Color c = ColorWithInterpolatedColors(color1, color2, 
                                                   (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 
                                                   100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
-            // FIXME: Curve black intensity
-//            c.red /= 255;
-//            c.red *= c.red;
-//            c.red *= 255;
-//          
-//            c.green /= 255;
-//            c.green *= c.green;
-//            c.green *= 255;
-//        
-//            c.blue /= 255;
-//            c.blue *= c.blue;
-//            c.blue *= 255;
+            // Curve black intensity
+            float red = c.red, green = c.green, blue = c.blue;
+            red /= 255;
+            red *= red;
+            red *= 255;
+          
+            green /= 255;
+            green *= green;
+            green *= 255;
+        
+            blue /= 255;
+            blue *= blue;
+            blue *= 255;
+
+            c.red = red, c.blue = blue, c.green = green;
             
             _lights[i]->color = c;
           } else {
@@ -596,18 +579,23 @@ void Scene::tick()
   
 #ifndef TEST_MODE
   if (time - _modeStart > (unsigned long long)TRANSITION_TIME * 1000) {
-    setMode(randomMode());
+    Mode nextMode = randomMode();
+    logf("Timed mode change to %i", (int)nextMode);
+    setMode(nextMode);
   } else {
 #endif
     float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration + 1) : FRAME_DURATION);
     if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
+      logf("New frame duration = %f", newFrameDuration);
       frameDuration = newFrameDuration;
       frameDurationFloat = newFrameDuration;
 #ifndef TEST_MODE
       // Switch out of modes that are too slow or fast for the new frameDuration
       DelayRange range = rangeForMode(_mode);
       if (newFrameDuration < range.low || newFrameDuration > range.high) {
-        setMode(randomMode());
+        Mode newMode = randomMode();
+        logf("Switching out of mode %i due to frame duration. New mode = %i", (int)_mode, (int)newMode);
+        setMode(newMode);
       }
 #ifndef TEST_MODE
     }
@@ -626,3 +614,5 @@ void Scene::tick()
     button1Down = false;
   }
 }
+
+

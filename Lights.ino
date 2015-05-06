@@ -1,3 +1,5 @@
+
+
 #include <SPI.h>
 #include <TCL.h>
 
@@ -26,13 +28,13 @@
 #define SOUND_DIAL TCL_POT4
 
 /* Logging */
-#define SERIAL_LOGGING 1
+#define SERIAL_LOGGING 0
 #define DEBUG 0
 
 /* Options */
-#define TEST_MODE (ModeFollow)
+#define TEST_MODE (ModeInterferingWaves)
 #define TRANSITION_TIME (10)
-#define FRAME_DURATION 20
+#define FRAME_DURATION 50
 
 static const unsigned int LED_COUNT = 100;
 
@@ -41,17 +43,13 @@ static const unsigned int LED_COUNT = 100;
 #import "Light.h"
 #import "Scene.h"
 
+static Scene *gLights;
+
 void setup()
 {
 #if SERIAL_LOGGING
   int baud = 9600;
   Serial.begin(baud);
-  logf("START");
-//  Serial.println("START");
-//  Serial.print(millis());
-//  Serial.print(" millis: Serial logging started at ");
-//  Serial.print(baud);
-//  Serial.println(" baud");
   logf("%ul millis: Serial logging started at %i baud", millis(), baud);
 #endif
 
@@ -81,35 +79,6 @@ void setup()
 
 void loop()
 {
-  static int lead = 0;
-  static int c = 0;
-  Color color = NamedRainbow[c];
-  TCL.sendEmptyFrame();
-  for (int i = 0; i < 100; ++i) {
-    float distance = ((lead - i + 100) % 100) / 100.0;
-    
-    float red = color.red * (1 - distance);
-    float green = color.green *  (1 - distance);
-    float blue = color.blue * (1 - distance);
-    
-    TCL.sendColor(min(red, 255), min(green, 255), min(blue, 255));
-  }
-  TCL.sendEmptyFrame();
-  lead++;
-  if (lead >= 100) {
-    lead = 0;
-    Color newColor = NamedRainbow[c];
-    c = (c + 1) % ARRAY_SIZE(NamedRainbow);
-    
-    logf("NEXT COLOR index %i/%i = (%i, %i, %i)", (int)(c + 1), (int)ARRAY_SIZE(NamedRainbow), (int)newColor.red, (int)newColor.green, (int)newColor.blue);
-    logf("Red = (%i, %i, %i)", (int)kRedColor.red, (int)kRedColor.green, (int)kRedColor.blue);
-    logf("sizeof(Color) = %i", (int)sizeof(Color));
-  }
-  
-  return;
-  
-  
-  
 #if SERIAL_LOGGING
   static int loopCount2 = 0;
   if (loopCount2 % 100 == 0)
@@ -128,6 +97,5 @@ void loop()
 #endif
   
   gLights->tick();
-  logf("got to end of tick");
 }
 

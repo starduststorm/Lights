@@ -1,3 +1,5 @@
+
+
 struct Color {
   byte red;
   byte green;
@@ -28,6 +30,8 @@ static struct Color MakeColor(byte r, byte g, byte b)
   c.blue = b;
   return c;
 }
+
+static const Color kNightColor = MakeColor(0, 0, 0x10);
 
 static bool ColorIsEqualToColor(Color c1, Color c2)
 {
