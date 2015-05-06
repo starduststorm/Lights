@@ -57,9 +57,12 @@ private:
   Color _followColor;
   unsigned int _followColorIndex=0;
   
+  float *_sceneVariation = NULL;
+  
   Color *_automaticColors = NULL;
   Color *_automaticColorsTargets = NULL;
-  int *_automaticColorsProgress = NULL; // 0-100%
+  float *_automaticColorsProgress = NULL; // 0-100%
+  float _automaticColorsRate;
   
   float _transitionProgress=0;
   Color _targetColor;
@@ -257,12 +260,17 @@ void Scene::setMode(Mode mode)
     _soundPeak = 0;
     
     _automaticColorsCount = 0;
+    _automaticColorsRate = 1;
+    
     free(_automaticColors);
     _automaticColors = NULL;
     free(_automaticColorsTargets);
     _automaticColorsTargets = NULL;
     free(_automaticColorsProgress);
     _automaticColorsProgress = NULL;
+    
+    free(_sceneVariation);
+    _sceneVariation = NULL;
     
     // Initialize new mode
     for (int i = 0; i < _lightCount; ++i) {
@@ -285,6 +293,11 @@ void Scene::setMode(Mode mode)
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
         _automaticColorsCount = _lightCount / 10;
+        _sceneVariation = (float *)malloc(_automaticColorsCount * sizeof(float));
+        for (int i = 0; i < _automaticColorsCount; ++i) {
+          _sceneVariation[i] = fast_rand(-40, 40) / 10.0;
+        }
+        _automaticColorsRate = 0.1;
         break;
       case ModeWaves:
       case ModeOneBigWave: {
@@ -292,6 +305,7 @@ void Scene::setMode(Mode mode)
         _targetColor = RGBRainbow[fast_rand(ARRAY_SIZE(RGBRainbow))];
         _frameDurationMultiplier = 2;
         _automaticColorsCount = 1;
+        _automaticColorsRate = 0.2;
         break;
       }
     }
@@ -300,7 +314,7 @@ void Scene::setMode(Mode mode)
   if (_automaticColorsCount > 0) {
     _automaticColors = (Color *)malloc(_automaticColorsCount * sizeof(Color));
     _automaticColorsTargets = (Color *)malloc(_automaticColorsCount * sizeof(Color));
-    _automaticColorsProgress = (int *)malloc(_automaticColorsCount * sizeof(int));
+    _automaticColorsProgress = (float *)malloc(_automaticColorsCount * sizeof(float));
     for (int i = 0; i < _automaticColorsCount; ++i) {
       _automaticColors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
       _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
@@ -454,18 +468,18 @@ void Scene::tick()
       case ModeInterferingWaves: {
         // FIXME: It's jarring to shift in and out of this mode since it doesn't respect any transitions that were already in effect.
         // Idea: Have the first N passes use overlapping short transitions instead of setting the color.
-        const int waveLength = 12;
+        const int waveLength = 14;
         const float halfWave = waveLength / 2;
         
         Color automaticColors[_automaticColorsCount];
         float leaders[_automaticColorsCount];
-        float halfColors = _automaticColorsCount / 2.0;
+        float halfColors = _automaticColorsCount / 2.0; // Half the colors going each direction
         float lightsChunk = _lightCount / (float)halfColors;
         for (int c = 0; c < _automaticColorsCount; ++c) {
           if (c < halfColors) {
-            leaders[c] = _smoothLeader + c * lightsChunk;
+            leaders[c] = _smoothLeader + c * lightsChunk + _sceneVariation[c];
           } else {
-            leaders[c] = _lightCount - (_smoothLeader + c * lightsChunk);
+            leaders[c] = _lightCount - (_smoothLeader + c * lightsChunk) + _sceneVariation[c];
           }
           automaticColors[c] = getAutomaticColor(c); // cache
         }
@@ -570,7 +584,7 @@ void Scene::tick()
         _automaticColors[i] = _automaticColorsTargets[i];
         _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
       }
-      _automaticColorsProgress[i] += 1;
+      _automaticColorsProgress[i] += _automaticColorsRate;
     }
   }
   

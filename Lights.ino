@@ -32,9 +32,9 @@
 #define DEBUG 0
 
 /* Options */
-#define TEST_MODE (ModeInterferingWaves)
+//#define TEST_MODE (ModeInterferingWaves)
 #define TRANSITION_TIME (10)
-#define FRAME_DURATION 50
+#define FRAME_DURATION 60
 
 static const unsigned int LED_COUNT = 100;
 
