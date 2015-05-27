@@ -63,6 +63,7 @@ private:
   Color *_automaticColorsTargets = NULL;
   float *_automaticColorsProgress = NULL; // 0-100%
   float _automaticColorsRate;
+  Color *_automaticColorsCache = NULL;
   
   float _transitionProgress=0;
   Color _targetColor;
@@ -74,6 +75,7 @@ private:
   void updateStrand();
   DelayRange rangeForMode(Mode mode);
   Color getAutomaticColor(unsigned int i);
+  void clearAutomaticColorsCache();
 public:
   void applyAll(Color c);
   void tick();
@@ -84,6 +86,8 @@ public:
   
   unsigned int frameDuration; // millisecond delay between frames
   float frameDurationFloat; // Needed to compare values to current potentiometer to ignore noise
+  
+  float *_leaders = NULL; // for interfering waves
 };
 
 #pragma mark - Private
@@ -208,7 +212,17 @@ Scene::~Scene()
 
 Color Scene::getAutomaticColor(unsigned int i)
 {
-  return ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i], 100);
+  if (ColorIsNoColor(_automaticColorsCache[i])) {
+    _automaticColorsCache[i] = ColorWithInterpolatedColors(_automaticColors[i], _automaticColorsTargets[i], _automaticColorsProgress[i], 100);
+  }
+  return _automaticColorsCache[i];
+}
+
+void Scene::clearAutomaticColorsCache()
+{
+  for (int i = 0; i < _automaticColorsCount; ++i) {
+      _automaticColorsCache[i] = kNoColor;
+  }
 }
 
 DelayRange Scene::rangeForMode(Mode mode)
@@ -268,9 +282,14 @@ void Scene::setMode(Mode mode)
     _automaticColorsTargets = NULL;
     free(_automaticColorsProgress);
     _automaticColorsProgress = NULL;
+    free(_automaticColorsCache);
+    _automaticColorsCache = NULL;
     
     free(_sceneVariation);
     _sceneVariation = NULL;
+    
+    free(_leaders);
+    _leaders = NULL;
     
     // Initialize new mode
     for (int i = 0; i < _lightCount; ++i) {
@@ -292,10 +311,11 @@ void Scene::setMode(Mode mode)
       case ModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
-        _automaticColorsCount = _lightCount / 10;
+        _automaticColorsCount = 14;
         _sceneVariation = (float *)malloc(_automaticColorsCount * sizeof(float));
+        _leaders = (float *)malloc(_automaticColorsCount * sizeof(float));
         for (int i = 0; i < _automaticColorsCount; ++i) {
-          _sceneVariation[i] = fast_rand(-40, 40) / 10.0;
+          _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 10.0;
         }
         _automaticColorsRate = 0.1;
         break;
@@ -315,10 +335,12 @@ void Scene::setMode(Mode mode)
     _automaticColors = (Color *)malloc(_automaticColorsCount * sizeof(Color));
     _automaticColorsTargets = (Color *)malloc(_automaticColorsCount * sizeof(Color));
     _automaticColorsProgress = (float *)malloc(_automaticColorsCount * sizeof(float));
+    _automaticColorsCache = (Color *)malloc(_automaticColorsCount * sizeof(Color));
     for (int i = 0; i < _automaticColorsCount; ++i) {
       _automaticColors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
       _automaticColorsTargets[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
       _automaticColorsProgress[i] = 0;
+      _automaticColorsCache[i] = kNoColor;
     }
   }
   _directionIsReversed = (fast_rand(2) == 0);
@@ -466,22 +488,17 @@ void Scene::tick()
       }
       
       case ModeInterferingWaves: {
-        // FIXME: It's jarring to shift in and out of this mode since it doesn't respect any transitions that were already in effect.
-        // Idea: Have the first N passes use overlapping short transitions instead of setting the color.
-        const int waveLength = 14;
+        const int waveLength = 10;
         const float halfWave = waveLength / 2;
         
-        Color automaticColors[_automaticColorsCount];
-        float leaders[_automaticColorsCount];
-        float halfColors = _automaticColorsCount / 2.0; // Half the colors going each direction
-        float lightsChunk = _lightCount / (float)halfColors;
+        float lightsChunk = _lightCount / (float)_automaticColorsCount;
         for (int c = 0; c < _automaticColorsCount; ++c) {
-          if (c < halfColors) {
-            leaders[c] = _smoothLeader + c * lightsChunk + _sceneVariation[c];
+          if (c < _automaticColorsCount / 2.0) { // Half the colors going in each direction
+            _leaders[c] = _smoothLeader + 2 * c * lightsChunk + _sceneVariation[c];
           } else {
-            leaders[c] = _lightCount - (_smoothLeader + c * lightsChunk) + _sceneVariation[c];
+            int r = c - _automaticColorsCount / 2.0;
+            _leaders[c] = _lightCount - (_smoothLeader + 2 * r * lightsChunk + lightsChunk) + _sceneVariation[c];
           }
-          automaticColors[c] = getAutomaticColor(c); // cache
         }
         
         for (int i = 0; i < _lightCount; ++i) {
@@ -490,8 +507,10 @@ void Scene::tick()
           }
           int nearColor1 = -1, nearColor2 = -1; // Find the two colors nearest to this light
           float nearDistance1 = 1000, nearDistance2 = 1000;
+          
+          // FIXME some more: Could also remove this inner loop if I store the nearest two lights and locations, updating them as I walk through the lights.
           for (int c = 0; c < _automaticColorsCount; ++c) {
-            float distance = MOD_DISTANCE(i, leaders[c], _lightCount);
+            float distance = MOD_DISTANCE(i, _leaders[c], _lightCount);
             if (distance < nearDistance1 && nearDistance2 <= nearDistance1) {
               nearColor1 = c;
               nearDistance1 = distance;
@@ -501,8 +520,8 @@ void Scene::tick()
             }
           }
           if (nearDistance1 < halfWave || nearDistance2 < halfWave) {
-            Color color1 = (nearDistance1 < halfWave ? automaticColors[nearColor1] : automaticColors[nearColor2]);
-            Color color2 = (nearDistance2 < halfWave ? automaticColors[nearColor2] : automaticColors[nearColor1]);
+            Color color1 = (nearDistance1 < halfWave ? getAutomaticColor(nearColor1) : getAutomaticColor(nearColor2));
+            Color color2 = (nearDistance2 < halfWave ? getAutomaticColor(nearColor2) : getAutomaticColor(nearColor1));
             
             nearDistance1 = MIN(nearDistance1, halfWave);
             nearDistance2 = MIN(nearDistance2, halfWave);
@@ -525,6 +544,11 @@ void Scene::tick()
 
             c.red = red, c.blue = blue, c.green = green;
             
+            static const int kFadeTime = 3000;
+            unsigned long modeTime = millis() - _modeStart;
+            if (modeTime < kFadeTime) {
+              c = ColorWithInterpolatedColors(_lights[i]->color, c, (float)modeTime / kFadeTime * 100, 100);
+            }
             _lights[i]->color = c;
           } else {
             _lights[i]->color = kBlackColor;
@@ -586,6 +610,7 @@ void Scene::tick()
       }
       _automaticColorsProgress[i] += _automaticColorsRate;
     }
+    clearAutomaticColorsCache();
   }
   
   updateStrand();

@@ -18,6 +18,7 @@ static const Color kBlueColor    = (Color){.red=0,    .green=0,    .blue=0xFF};
 static const Color kVioletColor  = (Color){.red=0x8E, .green=0x25, .blue=0xFB};
 static const Color kMagentaColor = (Color){.red=0xFF, .green=0,    .blue=0xFF};
 static const Color kWhiteColor   = (Color){.red=0xFF, .green=0xFF, .blue=0xFF};
+static const Color kNoColor      = (Color){.red=0, .green=0, .blue=0, .filler=0xFF};
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
 Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor};
@@ -36,6 +37,11 @@ static const Color kNightColor = MakeColor(0, 0, 0x10);
 static bool ColorIsEqualToColor(Color c1, Color c2)
 {
   return (c1.red == c2.red && c1.green == c2.green && c1.blue == c2.blue);
+}
+
+static bool ColorIsNoColor(Color c)
+{
+  return c.filler != 0;
 }
 
 // Transition and intensity are both in the range [0, 100]
