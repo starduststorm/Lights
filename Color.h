@@ -15,6 +15,7 @@ static const Color kYellowColor  = (Color){.red=0xFF, .green=0xFF, .blue=0   };
 static const Color kGreenColor   = (Color){.red=0,    .green=0xFF, .blue=0   };
 static const Color kCyanColor    = (Color){.red=0,    .green=0xFF, .blue=0xFF};
 static const Color kBlueColor    = (Color){.red=0,    .green=0,    .blue=0xFF};
+static const Color kIndigoColor  = (Color){.red=0x4B, .green=0,    .blue=0x82};
 static const Color kVioletColor  = (Color){.red=0x8E, .green=0x25, .blue=0xFB};
 static const Color kMagentaColor = (Color){.red=0xFF, .green=0,    .blue=0xFF};
 static const Color kWhiteColor   = (Color){.red=0xFF, .green=0xFF, .blue=0xFF};
@@ -22,6 +23,7 @@ static const Color kNoColor      = (Color){.red=0, .green=0, .blue=0, .filler=0x
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
 Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor};
+Color ROYGBIVRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kBlueColor, kIndigoColor, kVioletColor};
 
 static struct Color MakeColor(byte r, byte g, byte b)
 {

@@ -9,6 +9,7 @@ typedef enum {
   ModeBlueFire,
   ModeLightningBugs,
   ModeInterferingWaves,
+  ModeRainbow,
   ModeCount,
   ModeBoomResponder,
   ModeBounce,
@@ -327,6 +328,11 @@ void Scene::setMode(Mode mode)
         _automaticColorsCount = 1;
         _automaticColorsRate = 0.2;
         break;
+      case ModeRainbow:
+        _frameDurationMultiplier = 1;
+        _followLeader = 0;
+        _followColorIndex = fast_rand(ARRAY_SIZE(ROYGBIVRainbow));
+        break;
       }
     }
     _modeStart = millis();
@@ -481,6 +487,20 @@ void Scene::tick()
           unsigned int turnOffLeaderIndex = (_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
           _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
           _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, LightTransitionEaseOut);
+        }
+        _followLeader += (_directionIsReversed ? -1 : 1);
+        _followLeader = (_followLeader + _lightCount) % _lightCount;
+        break;
+      }
+      
+      case ModeRainbow: {
+        const unsigned int waveLength = 50.0 / ARRAY_SIZE(ROYGBIVRainbow);
+        const float transitionRate = 100 / waveLength;
+        
+        for (int i = 0; i < _lightCount / waveLength; ++i) {
+          unsigned int changeIndex = (_followLeader + i * waveLength) % _lightCount;
+          Color waveColor = ROYGBIVRainbow[(_followColorIndex + i) % ARRAY_SIZE(ROYGBIVRainbow)];
+          _lights[changeIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
         }
         _followLeader += (_directionIsReversed ? -1 : 1);
         _followLeader = (_followLeader + _lightCount) % _lightCount;
