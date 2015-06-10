@@ -32,11 +32,11 @@
 #define DEBUG 0
 
 /* Options */
-//#define TEST_MODE (ModeRainbow)
+//#define TEST_MODE (ModeAccumulator)
 #define TRANSITION_TIME (40)
 #define FRAME_DURATION 60
 
-static const unsigned int LED_COUNT = 100;
+static const unsigned int LED_COUNT = 150;
 
 #import "Utilities.h"
 #import "Color.h"

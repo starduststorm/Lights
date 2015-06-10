@@ -10,6 +10,7 @@ typedef enum {
   ModeLightningBugs,
   ModeInterferingWaves,
   ModeRainbow,
+  ModeAccumulator,
   ModeCount,
   ModeBoomResponder,
   ModeBounce,
@@ -63,7 +64,7 @@ private:
   Color *_automaticColors = NULL;
   Color *_automaticColorsTargets = NULL;
   float *_automaticColorsProgress = NULL; // 0-100%
-  float _automaticColorsRate;
+  float  _automaticColorsRate;
   Color *_automaticColorsCache = NULL;
   
   float _transitionProgress=0;
@@ -312,7 +313,7 @@ void Scene::setMode(Mode mode)
       case ModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
-        _automaticColorsCount = 14;
+        _automaticColorsCount = _lightCount / 7;
         _sceneVariation = (float *)malloc(_automaticColorsCount * sizeof(float));
         _leaders = (float *)malloc(_automaticColorsCount * sizeof(float));
         for (int i = 0; i < _automaticColorsCount; ++i) {
@@ -332,6 +333,9 @@ void Scene::setMode(Mode mode)
         _frameDurationMultiplier = 1;
         _followLeader = 0;
         _followColorIndex = fast_rand(ARRAY_SIZE(ROYGBIVRainbow));
+        break;
+      case ModeAccumulator:
+        _frameDurationMultiplier = 0.5;
         break;
       }
     }
@@ -494,7 +498,7 @@ void Scene::tick()
       }
       
       case ModeRainbow: {
-        const unsigned int waveLength = 50.0 / ARRAY_SIZE(ROYGBIVRainbow);
+        const unsigned int waveLength = _lightCount / 2.0 / ARRAY_SIZE(ROYGBIVRainbow);
         const float transitionRate = 100 / waveLength;
         
         for (int i = 0; i < _lightCount / waveLength; ++i) {
@@ -564,6 +568,7 @@ void Scene::tick()
 
             c.red = red, c.blue = blue, c.green = green;
             
+            // For the first 3 seconds of interfering waves, fade from previous mode
             static const int kFadeTime = 3000;
             unsigned long modeTime = millis() - _modeStart;
             if (modeTime < kFadeTime) {
@@ -599,10 +604,60 @@ void Scene::tick()
          }
        }
        break;
-      
-      default: // Turn all off
-        applyAll(kBlackColor);
-        break;
+     case ModeAccumulator: {
+       const int kernelWidth = 3;
+       
+       static unsigned long long lastPing = 0;
+       
+       unsigned long mils = millis();
+       if (mils - lastPing > 200) {
+         unsigned int ping = fast_rand(_lightCount);
+         Color c = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+         
+         
+         _lights[(ping + _lightCount - 1) % _lightCount]->transitionToColor(c, 30);
+         _lights[ping]->transitionToColor(c, 30);
+         _lights[(ping + 1) % _lightCount]->transitionToColor(c, 15);
+         
+         lastPing = mils;
+       }
+       
+       Color colors[_lightCount];
+       for (unsigned int i = 0; i < _lightCount; ++i) {
+         colors[i] = _lights[i]->color;
+       }
+       
+       for (unsigned int target = 0; target < _lightCount; ++target) {
+         if (_lights[target]->isTransitioning()) {
+           continue;
+         }
+         // Box blur each light from a kernel on both sides
+         Color c = kBlackColor;
+         unsigned int count = 0;
+         for (int k = -kernelWidth; k <= kernelWidth; ++k) {
+           unsigned int source = (target + k + _lightCount) % _lightCount;
+           Color sourceColor = colors[source];
+           if (ColorIsEqualToColor(sourceColor, kBlackColor)) {
+             continue;
+           }
+           c.red = (c.red * count + sourceColor.red) / (float)(count + 1);
+           c.green = (c.green * count + sourceColor.green) / (float)(count + 1);
+           c.blue = (c.blue * count + sourceColor.blue) / (float)(count + 1);
+           ++count;
+         }
+         // And fade out
+         c.red *= 0.90;
+         c.green *= 0.90;
+         c.blue *= 0.90;
+         
+         _lights[target]->transitionToColor(c, 15);
+       }
+       
+       break;
+     }
+     default: // Turn all off
+       applyAll(kBlackColor);
+       break;
     }
     _lastFrame = time;
   }

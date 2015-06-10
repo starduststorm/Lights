@@ -22,7 +22,7 @@ static const Color kWhiteColor   = (Color){.red=0xFF, .green=0xFF, .blue=0xFF};
 static const Color kNoColor      = (Color){.red=0, .green=0, .blue=0, .filler=0xFF};
 
 Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
-Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kVioletColor, kMagentaColor};
+Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kIndigoColor, kVioletColor, kMagentaColor};
 Color ROYGBIVRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kBlueColor, kIndigoColor, kVioletColor};
 
 static struct Color MakeColor(byte r, byte g, byte b)
