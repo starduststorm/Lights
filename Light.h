@@ -27,6 +27,7 @@ public:
   
   void transitionToColor(Color transitionTargetColor, float rate, LightTransitionCurve curve);
   void transitionToColor(Color transitionTargetColor, float rate);
+  void stopTransition();
   void transitionTick(float multiplier);
   bool isTransitioning();
 #if SERIAL_LOGGING
@@ -55,6 +56,11 @@ void Light::transitionToColor(Color transitionTargetColor, float rate, LightTran
 void Light::transitionToColor(Color transitionTargetColor, float rate)
 {
   transitionToColor(transitionTargetColor, rate, LightTransitionLinear);
+}
+
+void Light::stopTransition()
+{
+  transitionRate = 0;
 }
 
 void Light::transitionTick(float multiplier)

@@ -515,149 +515,149 @@ void Scene::tick()
         const int waveLength = 10;
         const float halfWave = waveLength / 2;
         
+        // For the first 3 seconds of interfering waves, fade from previous mode
+        static const int kFadeTime = 3000;
+        unsigned long modeTime = millis() - _modeStart;
+        bool inModeTransition = modeTime < kFadeTime;
+        
+        applyAll(kBlackColor);
+        
         float lightsChunk = _lightCount / (float)_automaticColorsCount;
-        for (int c = 0; c < _automaticColorsCount; ++c) {
-          if (c < _automaticColorsCount / 2.0) { // Half the colors going in each direction
-            _leaders[c] = _smoothLeader + 2 * c * lightsChunk + _sceneVariation[c];
+        for (int waveIndex = 0; waveIndex < _automaticColorsCount; ++waveIndex) {
+          if (waveIndex < _automaticColorsCount / 2.0) { // Half the colors going in each direction
+            _leaders[waveIndex] = _smoothLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
           } else {
-            int r = c - _automaticColorsCount / 2.0;
-            _leaders[c] = _lightCount - (_smoothLeader + 2 * r * lightsChunk + lightsChunk) + _sceneVariation[c];
+            int r = waveIndex - _automaticColorsCount / 2.0;
+            _leaders[waveIndex] = _lightCount - (_smoothLeader + 2 * r * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
+          }
+          
+          Color waveColor = getAutomaticColor(waveIndex);
+          
+          for (int w = -halfWave; w < halfWave; ++w) {
+            int lightIndex = (int)(_leaders[waveIndex] + w + _lightCount) % _lightCount;
+            float distance = MOD_DISTANCE(lightIndex, _leaders[waveIndex], _lightCount);
+            if (distance < halfWave) {
+              Color existingColor = _lights[lightIndex]->color;
+              
+              bool isUnlit = false;//ColorIsEqualToColor(existingColor, kBlackColor);
+              
+              Color color = ColorWithInterpolatedColors(existingColor, waveColor,
+                                                       ((1 - distance / halfWave) * (isUnlit ? 100 : 50)),
+                                                       100);
+              
+              float red = color.red, green = color.green, blue = color.blue;
+              red /= 255;
+              red *= red;
+              red *= 255;
+            
+              green /= 255;
+              green *= green;
+              green *= 255;
+          
+              blue /= 255;
+              blue *= blue;
+              blue *= 255;
+              
+              color.red = red, color.blue = blue, color.green = green;
+              
+              if (inModeTransition) {
+                color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 100, 100);
+              }
+              
+              _lights[lightIndex]->color = color;
+            }
           }
         }
+        _smoothLeader = fmod(_smoothLeader + (10. / frameDuration), _lightCount);
         
+        // Curve black intensity
         for (int i = 0; i < _lightCount; ++i) {
-          if (_lights[i]->isTransitioning()) {
-            continue;
-          }
-          int nearColor1 = -1, nearColor2 = -1; // Find the two colors nearest to this light
-          float nearDistance1 = 1000, nearDistance2 = 1000;
+          Color color = _lights[i]->color;
           
-          // FIXME some more: Could also remove this inner loop if I store the nearest two lights and locations, updating them as I walk through the lights.
-          for (int c = 0; c < _automaticColorsCount; ++c) {
-            float distance = MOD_DISTANCE(i, _leaders[c], _lightCount);
-            if (distance < nearDistance1 && nearDistance2 <= nearDistance1) {
-              nearColor1 = c;
-              nearDistance1 = distance;
-            } else if (distance < nearDistance2) {
-              nearColor2 = c;
-              nearDistance2 = distance;
-            }
-          }
-          if (nearDistance1 < halfWave || nearDistance2 < halfWave) {
-            Color color1 = (nearDistance1 < halfWave ? getAutomaticColor(nearColor1) : getAutomaticColor(nearColor2));
-            Color color2 = (nearDistance2 < halfWave ? getAutomaticColor(nearColor2) : getAutomaticColor(nearColor1));
-            
-            nearDistance1 = MIN(nearDistance1, halfWave);
-            nearDistance2 = MIN(nearDistance2, halfWave);
-            Color c = ColorWithInterpolatedColors(color1, color2, 
-                                                  (nearDistance1 / halfWave - nearDistance2 / halfWave) * 50 + 50, 
-                                                  100 * (1 - (nearDistance1 + nearDistance2) / waveLength));
-            // Curve black intensity
-            float red = c.red, green = c.green, blue = c.blue;
-            red /= 255;
-            red *= red;
-            red *= 255;
-          
-            green /= 255;
-            green *= green;
-            green *= 255;
-        
-            blue /= 255;
-            blue *= blue;
-            blue *= 255;
 
-            c.red = red, c.blue = blue, c.green = green;
-            
-            // For the first 3 seconds of interfering waves, fade from previous mode
-            static const int kFadeTime = 3000;
-            unsigned long modeTime = millis() - _modeStart;
-            if (modeTime < kFadeTime) {
-              c = ColorWithInterpolatedColors(_lights[i]->color, c, (float)modeTime / kFadeTime * 100, 100);
-            }
-            _lights[i]->color = c;
-          } else {
-            _lights[i]->color = kBlackColor;
-          }
+          
+          _lights[i]->color = color;
         }
-        _smoothLeader = fmod(_smoothLeader + (20. / frameDuration), _lightCount);
         break;
      }
      
-     case ModeParity:
-       if (!_lights[0]->isTransitioning()) {
-         const int parityCount = (kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
-         Color colors[parityCount];
-         for (int i = 0; i < parityCount; ++i) {
-           colors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
-         }
-         for (int i = 0; i < _lightCount; ++i) {
-           int parity = i % parityCount;
-           _lights[i]->transitionToColor(colors[parity], 2);
-         }
-       }
-       break;
+      case ModeParity:
+        if (!_lights[0]->isTransitioning()) {
+          const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
+          Color colors[parityCount];
+          for (int i = 0; i < parityCount; ++i) {
+            colors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+          }
+          for (int i = 0; i < _lightCount; ++i) {
+            int parity = i % parityCount;
+            _lights[i]->transitionToColor(colors[parity], 2);
+          }
+        }
+        break;
      
-     case ModeBoomResponder:
-       for (int i = 0; i < _lightCount; ++i) {
-         if (!_lights[i]->isTransitioning()) {
-           _lights[i]->transitionToColor(NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))], 10);
-         }
-       }
-       break;
-     case ModeAccumulator: {
-       const int kernelWidth = 3;
+      case ModeBoomResponder:
+        for (int i = 0; i < _lightCount; ++i) {
+          if (!_lights[i]->isTransitioning()) {
+            _lights[i]->transitionToColor(NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))], 10);
+          }
+        }
+        break;
+      
+      case ModeAccumulator: {
+        const int kernelWidth = 3;
        
-       static unsigned long long lastPing = 0;
+        static unsigned long long lastPing = 0;
        
-       unsigned long mils = millis();
-       if (mils - lastPing > 200) {
-         unsigned int ping = fast_rand(_lightCount);
-         Color c = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+        unsigned long mils = millis();
+        const int pingRate = 20000 / _lightCount;
+        if (mils - lastPing > pingRate) {
+          unsigned int ping = fast_rand(_lightCount);
+          Color c = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
          
          
-         _lights[(ping + _lightCount - 1) % _lightCount]->transitionToColor(c, 30);
-         _lights[ping]->transitionToColor(c, 30);
-         _lights[(ping + 1) % _lightCount]->transitionToColor(c, 15);
+          _lights[(ping + _lightCount - 1) % _lightCount]->transitionToColor(c, 30);
+          _lights[ping]->transitionToColor(c, 30);
+          _lights[(ping + 1) % _lightCount]->transitionToColor(c, 15);
          
-         lastPing = mils;
-       }
+          lastPing = mils;
+        }
        
-       Color colors[_lightCount];
-       for (unsigned int i = 0; i < _lightCount; ++i) {
-         colors[i] = _lights[i]->color;
-       }
-       
-       for (unsigned int target = 0; target < _lightCount; ++target) {
-         if (_lights[target]->isTransitioning()) {
-           continue;
-         }
-         // Box blur each light from a kernel on both sides
-         Color c = kBlackColor;
-         unsigned int count = 0;
-         for (int k = -kernelWidth; k <= kernelWidth; ++k) {
-           unsigned int source = (target + k + _lightCount) % _lightCount;
-           Color sourceColor = colors[source];
-           if (ColorIsEqualToColor(sourceColor, kBlackColor)) {
-             continue;
-           }
-           c.red = (c.red * count + sourceColor.red) / (float)(count + 1);
-           c.green = (c.green * count + sourceColor.green) / (float)(count + 1);
-           c.blue = (c.blue * count + sourceColor.blue) / (float)(count + 1);
-           ++count;
-         }
-         // And fade out
-         c.red *= 0.90;
-         c.green *= 0.90;
-         c.blue *= 0.90;
+        Color colors[_lightCount];
+        for (unsigned int i = 0; i < _lightCount; ++i) {
+          colors[i] = _lights[i]->color;
+        }
+        
+        for (unsigned int target = 0; target < _lightCount; ++target) {
+          if (_lights[target]->isTransitioning()) {
+            continue;
+          }
+          // Box blur each light from a kernel on both sides
+          Color c = kBlackColor;
+          unsigned int count = 0;
+          for (int k = -kernelWidth; k <= kernelWidth; ++k) {
+            unsigned int source = (target + k + _lightCount) % _lightCount;
+            Color sourceColor = colors[source];
+            if (ColorIsEqualToColor(sourceColor, kBlackColor)) {
+              continue;
+            }
+            c.red = (c.red * count + sourceColor.red) / (float)(count + 1);
+            c.green = (c.green * count + sourceColor.green) / (float)(count + 1);
+            c.blue = (c.blue * count + sourceColor.blue) / (float)(count + 1);
+            ++count;
+          }
+          // And fade out
+          c.red *= 0.90;
+          c.green *= 0.90;
+          c.blue *= 0.90;
          
-         _lights[target]->transitionToColor(c, 15);
-       }
+          _lights[target]->transitionToColor(c, 15);
+        }
        
-       break;
-     }
-     default: // Turn all off
-       applyAll(kBlackColor);
-       break;
+        break;
+      }
+      default: // Turn all off
+        applyAll(kBlackColor);
+        break;
     }
     _lastFrame = time;
   }
@@ -698,8 +698,8 @@ void Scene::tick()
     setMode(nextMode);
   } else {
 #endif
-    float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration + 1) : FRAME_DURATION);
-    if (abs(newFrameDuration - frameDurationFloat) > 0.9) {
+    float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration - 1) : FRAME_DURATION);
+    if (abs(newFrameDuration - frameDurationFloat) > 7) {
       logf("New frame duration = %f", newFrameDuration);
       frameDuration = newFrameDuration;
       frameDurationFloat = newFrameDuration;

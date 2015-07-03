@@ -32,11 +32,11 @@
 #define DEBUG 0
 
 /* Options */
-//#define TEST_MODE (ModeAccumulator)
+//#define TEST_MODE (ModeInterferingWaves)
 #define TRANSITION_TIME (40)
 #define FRAME_DURATION 60
 
-static const unsigned int LED_COUNT = 150;
+static const unsigned int LED_COUNT = 200;
 
 #import "Utilities.h"
 #import "Color.h"
@@ -67,6 +67,8 @@ void setup()
 #if DEVELOPER_BOARD
   TCL.setupDeveloperShield();
 #endif
+  
+  fast_srand();
   
   gLights = new Scene(LED_COUNT);
 #ifdef TEST_MODE
