@@ -20,7 +20,7 @@
 
 /* Hardware Configuration */
 #define ARDUINO_DUE 1
-#define DEVELOPER_BOARD 0
+#define DEVELOPER_BOARD 1
 
 /* For Developer Board */
 #define BRIGHTNESS_DIAL TCL_POT3
@@ -36,7 +36,7 @@
 #define TRANSITION_TIME (40)
 #define FRAME_DURATION 60
 
-static const unsigned int LED_COUNT = 200;
+static const unsigned int LED_COUNT = 300;
 
 #import "Utilities.h"
 #import "Color.h"

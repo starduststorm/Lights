@@ -58,6 +58,7 @@ private:
   float _smoothLeader=0;
   Color _followColor;
   unsigned int _followColorIndex=0;
+  Color *_colorScratch=NULL;
   
   float *_sceneVariation = NULL;
   
@@ -66,7 +67,7 @@ private:
   float *_automaticColorsProgress = NULL; // 0-100%
   float  _automaticColorsRate;
   Color *_automaticColorsCache = NULL;
-  
+   
   float _transitionProgress=0;
   Color _targetColor;
   bool _directionIsReversed;
@@ -286,6 +287,8 @@ void Scene::setMode(Mode mode)
     _automaticColorsProgress = NULL;
     free(_automaticColorsCache);
     _automaticColorsCache = NULL;
+    free(_colorScratch);
+    _colorScratch = NULL;
     
     free(_sceneVariation);
     _sceneVariation = NULL;
@@ -320,6 +323,7 @@ void Scene::setMode(Mode mode)
           _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 10.0;
         }
         _automaticColorsRate = 0.1;
+        _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
       case ModeWaves:
       case ModeOneBigWave: {
@@ -520,15 +524,15 @@ void Scene::tick()
         unsigned long modeTime = millis() - _modeStart;
         bool inModeTransition = modeTime < kFadeTime;
         
-        applyAll(kBlackColor);
+        bzero(_colorScratch, _lightCount * sizeof(Color));
         
         float lightsChunk = _lightCount / (float)_automaticColorsCount;
         for (int waveIndex = 0; waveIndex < _automaticColorsCount; ++waveIndex) {
           if (waveIndex < _automaticColorsCount / 2.0) { // Half the colors going in each direction
             _leaders[waveIndex] = _smoothLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
           } else {
-            int r = waveIndex - _automaticColorsCount / 2.0;
-            _leaders[waveIndex] = _lightCount - (_smoothLeader + 2 * r * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
+            int normalizedWavedIndex = waveIndex - _automaticColorsCount / 2.0;
+            _leaders[waveIndex] = _lightCount - (_smoothLeader + 2 * normalizedWavedIndex * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
           }
           
           Color waveColor = getAutomaticColor(waveIndex);
@@ -537,23 +541,29 @@ void Scene::tick()
             int lightIndex = (int)(_leaders[waveIndex] + w + _lightCount) % _lightCount;
             float distance = MOD_DISTANCE(lightIndex, _leaders[waveIndex], _lightCount);
             if (distance < halfWave) {
-              Color existingColor = _lights[lightIndex]->color;
               
-              bool isUnlit = false;//ColorIsEqualToColor(existingColor, kBlackColor);
+              Color existingColor = _colorScratch[lightIndex];
+              
+              float litRatio = (existingColor.red + existingColor.green + existingColor.blue) / (float)(3 * 255);
+              // If the existing light is less than 3% lit, use the whole new color. Otherwise smoothly fade into splitting the difference.
+              float additionalFade = (litRatio < 0.03 ? 50 : (litRatio > 0.1 ? 0 : (50 - 50 * litRatio / 0.1)));
+              
+//              logf("Existing color = (%i, %i, %i), litRation = %f, additionalFade = %f", existingColor.red, existingColor.green, existingColor.blue, litRatio, additionalFade);
               
               Color color = ColorWithInterpolatedColors(existingColor, waveColor,
-                                                       ((1 - distance / halfWave) * (isUnlit ? 100 : 50)),
+                                                       ((1 - distance / halfWave) * (50 + additionalFade)),
                                                        100);
+              _colorScratch[lightIndex] = color;
               
               float red = color.red, green = color.green, blue = color.blue;
               red /= 255;
               red *= red;
               red *= 255;
-            
+              
               green /= 255;
               green *= green;
               green *= 255;
-          
+              
               blue /= 255;
               blue *= blue;
               blue *= 255;
@@ -561,6 +571,7 @@ void Scene::tick()
               color.red = red, color.blue = blue, color.green = green;
               
               if (inModeTransition) {
+                // Fade from previous mode
                 color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 100, 100);
               }
               
@@ -568,19 +579,20 @@ void Scene::tick()
             }
           }
         }
-        _smoothLeader = fmod(_smoothLeader + (10. / frameDuration), _lightCount);
-        
-        // Curve black intensity
-        for (int i = 0; i < _lightCount; ++i) {
-          Color color = _lights[i]->color;
-          
-
-          
-          _lights[i]->color = color;
+        // Black out all other lights
+        for (unsigned int i = 0; i < _lightCount; ++i) {
+          if (ColorIsEqualToColor(_colorScratch[i], kBlackColor)) {
+            if (inModeTransition) {
+              _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, (float)modeTime / kFadeTime * 100, 100);
+            } else {
+              _lights[i]->color = kBlackColor;
+            }
+          }
         }
+        _smoothLeader = fmod(_smoothLeader + (10. / frameDuration), _lightCount);
         break;
-     }
-     
+      }
+      
       case ModeParity:
         if (!_lights[0]->isTransitioning()) {
           const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
