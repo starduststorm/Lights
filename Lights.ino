@@ -33,7 +33,7 @@
 
 /* Options */
 //#define TEST_MODE (ModeInterferingWaves)
-#define TRANSITION_TIME (40)
+#define TRANSITION_TIME (80)
 #define FRAME_DURATION 60
 
 static const unsigned int LED_COUNT = 300;

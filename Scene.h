@@ -589,7 +589,7 @@ void Scene::tick()
             }
           }
         }
-        _smoothLeader = fmod(_smoothLeader + (10. / frameDuration), _lightCount);
+        _smoothLeader = fmod(_smoothLeader + (15. / frameDuration), _lightCount);
         break;
       }
       
