@@ -19,24 +19,25 @@
 
 
 /* Hardware Configuration */
-#define ARDUINO_DUE 1
-#define DEVELOPER_BOARD 1
+#define ARDUINO_DUE 0
+#define DEVELOPER_BOARD 0
 
 /* For Developer Board */
 #define BRIGHTNESS_DIAL TCL_POT3
 #define MODE_DIAL TCL_POT1
-#define SOUND_DIAL TCL_POT4
+#define SPEED_DIAL TCL_POT4
+//#define SOUND_DIAL TCL_POT2
 
 /* Logging */
-#define SERIAL_LOGGING 0
-#define DEBUG 0
+#define SERIAL_LOGGING 1
+#define DEBUG 1
 
 /* Options */
 //#define TEST_MODE (ModeInterferingWaves)
 #define TRANSITION_TIME (80)
 #define FRAME_DURATION 60
 
-static const unsigned int LED_COUNT = 300;
+static const unsigned int LED_COUNT = 150;
 
 #import "Utilities.h"
 #import "Color.h"

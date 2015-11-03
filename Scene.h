@@ -123,13 +123,15 @@ void Scene::updateStrand()
 {
   float brightnessAdjustment = getBrightness();
   
+  float soundMultiplier = 1.0;
+  bool useSound = false;
+#ifdef SOUND_DIAL
   float soundSensitivity = PotentiometerRead(SOUND_DIAL, 10, 204);
-  bool useSound = soundSensitivity < 200;
-  float soundMultiplier;
+  useSound = soundSensitivity < 200;
+  
   if (useSound) {
     const int pin = 15;
     unsigned int soundReading = analogRead(pin);
-    
     if (soundReading > _soundPeak) {
       _soundPeak = soundReading;
     } else {
@@ -138,7 +140,8 @@ void Scene::updateStrand()
     soundMultiplier = 0.5 + _soundPeak / soundSensitivity;
   } else {
     _soundPeak = 0;
-  }
+  } 
+#endif
   
   TCL.sendEmptyFrame();
   for (int i = 0; i < _lightCount; ++i) {
@@ -502,7 +505,7 @@ void Scene::tick()
       }
       
       case ModeRainbow: {
-        const unsigned int waveLength = _lightCount / 2.0 / ARRAY_SIZE(ROYGBIVRainbow);
+        const unsigned int waveLength = 10;
         const float transitionRate = 100 / waveLength;
         
         for (int i = 0; i < _lightCount / waveLength; ++i) {
@@ -523,8 +526,12 @@ void Scene::tick()
         static const int kFadeTime = 3000;
         unsigned long modeTime = millis() - _modeStart;
         bool inModeTransition = modeTime < kFadeTime;
-        
+
+#if ARDUINO_DUE
         bzero(_colorScratch, _lightCount * sizeof(Color));
+#else
+        memset(_colorScratch, 0, _lightCount * sizeof(Color));
+#endif
         
         float lightsChunk = _lightCount / (float)_automaticColorsCount;
         for (int waveIndex = 0; waveIndex < _automaticColorsCount; ++waveIndex) {
@@ -710,7 +717,7 @@ void Scene::tick()
     setMode(nextMode);
   } else {
 #endif
-    float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(TCL_POT2, 10, kMaxFrameDuration - 1) : FRAME_DURATION);
+    float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(SPEED_DIAL, 10, kMaxFrameDuration - 1) : FRAME_DURATION);
     if (abs(newFrameDuration - frameDurationFloat) > 7) {
       logf("New frame duration = %f", newFrameDuration);
       frameDuration = newFrameDuration;
