@@ -1,4 +1,5 @@
 
+#include "WS2811.h"
 
 typedef enum {
   ModeFollow = 0,
@@ -48,6 +49,10 @@ private:
   unsigned long _lastFrame=0;
   
   Light **_lights;
+  
+#if WS2811
+  WS2811Renderer *ws2811Renderer;
+#endif
   
   // Mode specific options
   float _frameDurationMultiplier;
@@ -143,7 +148,9 @@ void Scene::updateStrand()
   } 
 #endif
   
+#if !WS2811
   TCL.sendEmptyFrame();
+#endif
   for (int i = 0; i < _lightCount; ++i) {
     Light *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
@@ -159,10 +166,21 @@ void Scene::updateStrand()
       green *= brightnessAdjustment;
       blue *= brightnessAdjustment;
     }
+    red = min(red, 255);
+    green = min(green, 255);
+    blue = min(blue, 255);
     
-    TCL.sendColor(min(red, 255), min(green, 255), min(blue, 255));
+#if !WS2811
+    TCL.sendColor(red, green, blue);
+#else
+    ws2811Renderer->setPixel(i, red, green, blue);
+#endif
   }
+#if !WS2811
   TCL.sendEmptyFrame();
+#else
+  ws2811Renderer->render();
+#endif
 }
 
 #pragma mark - Convenience
@@ -208,6 +226,10 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
   }
   _lastTick = millis();
   _lastFrame = _lastTick;
+  
+#if WS2811
+  ws2811Renderer = new WS2811Renderer(LED_COUNT);
+#endif
   
   applyAll(kBlackColor);
 }
@@ -410,7 +432,7 @@ void Scene::tick()
     switch (_mode) {
       case ModeFollow: {
         Color c = RGBRainbow[_followColorIndex];
-        _lights[_followLeader]->transitionToColor(RGBRainbow[_followColorIndex], 3);
+        _lights[_followLeader]->transitionToColor(c, 3);
         
         _followLeader += (_directionIsReversed ? -1 : 1);
         if (_followLeader < 0 || _followLeader >= _lightCount) {

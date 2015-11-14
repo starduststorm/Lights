@@ -1,8 +1,3 @@
-
-
-#include <SPI.h>
-#include <TCL.h>
-
 // Pulse delay controlled by potentiometer
 // Rotates modes every minute or so
 // Since delay is constant across modes, this won't change from calm to frantic suddenly
@@ -17,32 +12,17 @@
 //     or did a bi-directional wipe, flashed away (party mode), or some other cool effect.
 // -----------------------------------------
 
+static const unsigned int LED_COUNT = 50;
 
-/* Hardware Configuration */
-#define ARDUINO_DUE 0
-#define DEVELOPER_BOARD 0
+#include <SPI.h>
+#include <TCL.h>
 
-/* For Developer Board */
-#define BRIGHTNESS_DIAL TCL_POT3
-#define MODE_DIAL TCL_POT1
-#define SPEED_DIAL TCL_POT4
-//#define SOUND_DIAL TCL_POT2
-
-/* Logging */
-#define SERIAL_LOGGING 1
-#define DEBUG 1
-
-/* Options */
-//#define TEST_MODE (ModeInterferingWaves)
-#define TRANSITION_TIME (80)
-#define FRAME_DURATION 60
-
-static const unsigned int LED_COUNT = 150;
-
+#import "Config.h"
 #import "Utilities.h"
 #import "Color.h"
 #import "Light.h"
 #import "Scene.h"
+#import "WS2811.h"
 
 static Scene *gLights;
 
@@ -61,7 +41,7 @@ void setup()
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(SPI_MODE0);
   SPI.setClockDivider(42);
-#else
+#elseif !WS2811
   TCL.begin();
 #endif
   
