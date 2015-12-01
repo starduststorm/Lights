@@ -1,18 +1,25 @@
 
 #include "WS2811.h"
+#include "Color.h"
+
+Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
+Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kIndigoColor, kVioletColor, kMagentaColor};
+Color ROYGBIVRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kBlueColor, kIndigoColor, kVioletColor};
 
 typedef enum {
-  ModeFollow = 0,
   ModeWaves,
   ModeOneBigWave,
   ModeParity,
   ModeFire,
   ModeBlueFire,
   ModeLightningBugs,
+#if ARDUINO_DUE
   ModeInterferingWaves,
+#endif
   ModeRainbow,
   ModeAccumulator,
   ModeCount,
+  ModeFollow,
   ModeBoomResponder,
   ModeBounce,
 } Mode;
@@ -173,6 +180,9 @@ void Scene::updateStrand()
 #if !WS2811
     TCL.sendColor(red, green, blue);
 #else
+    // Color corrections for the WS2811 strands I use
+    red = min(1.1 * red, 255);
+    
     ws2811Renderer->setPixel(i, red, green, blue);
 #endif
   }
@@ -216,7 +226,9 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
   setDelayRangeForMode(MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration), ModeLightningBugs);
   setDelayRangeForMode(kDelayRangeStandard, ModeWaves);
   setDelayRangeForMode(MakeDelayRange(kMinStandardFrameDuration, 40), ModeOneBigWave);
+#if ARDUINO_DUE
   setDelayRangeForMode(kDelayRangeStandard, ModeInterferingWaves);
+#endif
   setDelayRangeForMode(MakeDelayRange(0, kMaxStandardFrameDuration), ModeParity);
   
   _lightCount = lightCount;
@@ -338,6 +350,7 @@ void Scene::setMode(Mode mode)
       case ModeLightningBugs:
         transitionAll(kNightColor, 10);
         break;
+#if ARDUINO_DUE
       case ModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
         _followLeader = _smoothLeader = 0;
@@ -350,6 +363,7 @@ void Scene::setMode(Mode mode)
         _automaticColorsRate = 0.1;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
+#endif
       case ModeWaves:
       case ModeOneBigWave: {
         _followLeader = 0;
@@ -365,6 +379,7 @@ void Scene::setMode(Mode mode)
         break;
       case ModeAccumulator:
         _frameDurationMultiplier = 0.5;
+        _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
       }
     }
@@ -528,7 +543,7 @@ void Scene::tick()
       
       case ModeRainbow: {
         const unsigned int waveLength = 10;
-        const float transitionRate = 100 / waveLength;
+        const float transitionRate = 120 / waveLength;
         
         for (int i = 0; i < _lightCount / waveLength; ++i) {
           unsigned int changeIndex = (_followLeader + i * waveLength) % _lightCount;
@@ -540,6 +555,7 @@ void Scene::tick()
         break;
       }
       
+#if ARDUINO_DUE
       case ModeInterferingWaves: {
         const int waveLength = 10;
         const float halfWave = waveLength / 2;
@@ -621,6 +637,7 @@ void Scene::tick()
         _smoothLeader = fmod(_smoothLeader + (15. / frameDuration), _lightCount);
         break;
       }
+#endif
       
       case ModeParity:
         if (!_lights[0]->isTransitioning()) {
@@ -645,7 +662,11 @@ void Scene::tick()
         break;
       
       case ModeAccumulator: {
+#if ARDUINO_DUE
         const int kernelWidth = 3;
+#else
+        const int kernelWidth = 1;
+#endif
        
         static unsigned long long lastPing = 0;
        
@@ -654,8 +675,7 @@ void Scene::tick()
         if (mils - lastPing > pingRate) {
           unsigned int ping = fast_rand(_lightCount);
           Color c = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
-         
-         
+          
           _lights[(ping + _lightCount - 1) % _lightCount]->transitionToColor(c, 30);
           _lights[ping]->transitionToColor(c, 30);
           _lights[(ping + 1) % _lightCount]->transitionToColor(c, 15);
@@ -663,9 +683,8 @@ void Scene::tick()
           lastPing = mils;
         }
        
-        Color colors[_lightCount];
         for (unsigned int i = 0; i < _lightCount; ++i) {
-          colors[i] = _lights[i]->color;
+          _colorScratch[i] = _lights[i]->color;
         }
         
         for (unsigned int target = 0; target < _lightCount; ++target) {
@@ -675,10 +694,11 @@ void Scene::tick()
           // Box blur each light from a kernel on both sides
           Color c = kBlackColor;
           unsigned int count = 0;
+          Color sourceColor;
           for (int k = -kernelWidth; k <= kernelWidth; ++k) {
             unsigned int source = (target + k + _lightCount) % _lightCount;
-            Color sourceColor = colors[source];
-            if (ColorIsEqualToColor(sourceColor, kBlackColor)) {
+            sourceColor = _colorScratch[source];
+            if (sourceColor.red + sourceColor.green + sourceColor.blue < 20) {
               continue;
             }
             c.red = (c.red * count + sourceColor.red) / (float)(count + 1);

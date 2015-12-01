@@ -13,11 +13,17 @@
 #define WS2811 (true) // if False, assume we can use TCL
 
 /* Logging */
-#define SERIAL_LOGGING 0
-#define DEBUG 0
+#define SERIAL_LOGGING 1
+#define DEBUG 1
 
 /* Options */
-//#define TEST_MODE (ModeInterferingWaves)
+#define TEST_MODE (ModeRainbow)
 #define TRANSITION_TIME (80)
-#define FRAME_DURATION 60
+#define FRAME_DURATION 80
+
+#if DEVELOPER_BOARD
+static const bool kHasDeveloperBoard = true;
+#else
+static const bool kHasDeveloperBoard = false;
+#endif
 

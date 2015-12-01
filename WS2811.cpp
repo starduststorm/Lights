@@ -1,13 +1,14 @@
 
 #include "Arduino.h"
 #include "WS2811.h"
+#include "Utilities.h"
 
 #if WS2811
 
 WS2811Renderer::WS2811Renderer(unsigned int numPixels)
 {
   this->numPixels = numPixels;
-  pixelBuffer = (uint8_t *)malloc(sizeof(uint8_t) * numPixels * 3);
+  pixelBuffer = (uint8_t *)malloc(numPixels * 3);
   memset(pixelBuffer, 0, numPixels * 3);
   
   pinMode(DIGITAL_PIN,OUTPUT);
@@ -25,7 +26,7 @@ void WS2811Renderer::setPixel(unsigned int index, byte red, byte green, byte blu
     uint8_t *p = &pixelBuffer[index * 3]; 
     *p++ = red;  
     *p++ = green;
-    *p = blue;
+    *p = blue;      
   }
 }
 
@@ -52,13 +53,13 @@ void WS2811Renderer::render()
   while((micros() - t_f) < 50L);  // wait for 50us (data latch)
   
   cli(); // Disable interrupts so that timing is as precise as possible
-  volatile uint8_t  
-   *p    = pixelBuffer,   // Copy the start address of our data array
-    val  = *p++,      // Get the current byte value & point to next byte
-    high = PORT |  _BV(PORT_PIN), // Bitmask for sending HIGH to pin
-    low  = PORT & ~_BV(PORT_PIN), // Bitmask for sending LOW to pin
-    tmp  = low,       // Swap variable to adjust duty cycle 
-    nbits= 8;  // Bit counter for inner loop
+  volatile uint8_t
+   *p     = pixelBuffer,   // Copy the start address of our data array
+    val   = *p++,      // Get the current byte value & point to next byte
+    high  = PORT |  _BV(PORT_PIN), // Bitmask for sending HIGH to pin
+    low   = PORT & ~_BV(PORT_PIN), // Bitmask for sending LOW to pin
+    tmp   = low,       // Swap variable to adjust duty cycle 
+    nbits = 8;  // Bit counter for inner loop
   volatile uint16_t
     nbytes = numPixels * 3; // Byte counter for outer loop
   asm volatile(
@@ -92,7 +93,7 @@ void WS2811Renderer::render()
    "nextbit:\n\t"         // -    label                       (T =  0) 
     "sbi  %0, %1\n\t"     // 2    signal HIGH                 (T =  2) 
     "sbrc %4, 7\n\t"      // 1-2  if MSB set                  (T =  ?)          
-     "mov  %6, %3\n\t"    // 0-1   tmp'll set signal high     (T =  4) 
+    "mov  %6, %3\n\t"     // 0-1  tmp'll set signal high     (T =  4) 
     "dec  %5\n\t"         // 1    decrease bitcount           (T =  5) 
     "nop\n\t"             // 1    nop (idle 1 clock cycle)    (T =  6)
     "st   %a2, %6\n\t"    // 2    set PORT to tmp             (T =  8)
@@ -110,7 +111,7 @@ void WS2811Renderer::render()
     "cbi   %0, %1\n\t"    // 2    signal LOW                  (T = 15)
     "rjmp .+0\n\t"        // 2    nop nop                     (T = 17)
     "nop\n\t"             // 1    nop                         (T = 18)
-    "dec %9\n\t"          // 1    decrease bytecount          (T = 19)
+    "sbiw %9,1\n\t"          // 1    decrease bytecount          (T = 19)
     "brne nextbit\n\t"    // 2    if bytecount !=0 -> nextbit (T = 20)
     ::
     // Input operands         Operand Id (w/ constraint)

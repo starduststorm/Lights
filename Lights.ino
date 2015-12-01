@@ -12,7 +12,7 @@
 //     or did a bi-directional wipe, flashed away (party mode), or some other cool effect.
 // -----------------------------------------
 
-static const unsigned int LED_COUNT = 50;
+static const unsigned int LED_COUNT = 100;
 
 #include <SPI.h>
 #include <TCL.h>
@@ -41,7 +41,7 @@ void setup()
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(SPI_MODE0);
   SPI.setClockDivider(42);
-#elseif !WS2811
+#elif !WS2811
   TCL.begin();
 #endif
   
@@ -63,13 +63,13 @@ void setup()
 void loop()
 {
 #if SERIAL_LOGGING
-  static int loopCount2 = 0;
+  static unsigned int loopCount2 = 0;
   if (loopCount2 % 100 == 0)
     logf("loop #%i", loopCount2);
   loopCount2++;
 #endif
   
-#if DEBUG && SERIAL_LOGGING
+#if DEBUG && SERIAL_LOGGING && !ARDUINO_DUE
   static int loopCount = 0;
   if (loopCount++ > 1000) {
     Serial.print("Memory free: ");
@@ -78,7 +78,6 @@ void loop()
     loopCount = 0;
   }
 #endif
-  
   gLights->tick();
 }
 

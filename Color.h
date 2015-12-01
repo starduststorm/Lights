@@ -21,43 +21,12 @@ static const Color kMagentaColor = (Color){.red=0xFF, .green=0,    .blue=0xFF};
 static const Color kWhiteColor   = (Color){.red=0xFF, .green=0xFF, .blue=0xFF};
 static const Color kNoColor      = (Color){.red=0, .green=0, .blue=0, .filler=0xFF};
 
-Color RGBRainbow[] = {kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor};
-Color NamedRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kIndigoColor, kVioletColor, kMagentaColor};
-Color ROYGBIVRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kBlueColor, kIndigoColor, kVioletColor};
-
-static struct Color MakeColor(byte r, byte g, byte b)
-{
-  Color c;
-  c.red = r;
-  c.green = g;
-  c.blue = b;
-  return c;
-}
-
+struct Color MakeColor(byte r, byte g, byte b);
 static const Color kNightColor = MakeColor(0, 0, 0x10);
 
-static bool ColorIsEqualToColor(Color c1, Color c2)
-{
-  return (c1.red == c2.red && c1.green == c2.green && c1.blue == c2.blue);
-}
+bool ColorIsEqualToColor(Color c1, Color c2);
 
-static bool ColorIsNoColor(Color c)
-{
-  return c.filler != 0;
-}
-
+bool ColorIsNoColor(Color c);
 // Transition and intensity are both in the range [0, 100]
-static Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity)
-{
-  // This is all integer math for speediness
-  byte r, g, b;
-  r = c1.red - transition * c1.red / 100 + transition * c2.red / 100;
-  r = intensity * r / 100;
-  g = c1.green - transition * c1.green / 100 + transition * c2.green / 100;
-  g = intensity * g / 100;
-  b = c1.blue - transition * c1.blue / 100 + transition * c2.blue / 100;
-  b = intensity * b / 100;
-  
-  return MakeColor(r, g, b);
-}
+Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity);
 
