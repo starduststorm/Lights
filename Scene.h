@@ -13,6 +13,7 @@ typedef enum {
   ModeFire,
   ModeBlueFire,
   ModeLightningBugs,
+  ModeTwinkle,
 #if ARDUINO_DUE
   ModeInterferingWaves,
 #endif
@@ -110,7 +111,7 @@ public:
 float getBrightness()
 {
   if (!kHasDeveloperBoard) {
-    return 1.0;
+    return DEFAULT_BRIGHNESS;
   }
   static float brightnessAdjustment = 1.0;
   static int brightMin = 200;
@@ -380,6 +381,12 @@ void Scene::setMode(Mode mode)
       case ModeAccumulator:
         _frameDurationMultiplier = 0.5;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
+        break;
+      case ModeTwinkle:
+        for (unsigned i = 0; i < _lightCount; ++i) {
+          Color color = ROYGBIVRainbow[fast_rand(ARRAY_SIZE(ROYGBIVRainbow))];
+          _lights[i]->transitionToColor(color, 10);
+        }
         break;
       }
     }
@@ -713,9 +720,58 @@ void Scene::tick()
          
           _lights[target]->transitionToColor(c, 15);
         }
-       
         break;
       }
+      case ModeTwinkle: {
+        static Color TwinkleRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor, kVioletColor, kBlackColor, kBlackColor};
+        bool anyTransitionHappening = false;
+        for (unsigned i = 0; i < _lightCount; ++i) {
+          if (_lights[i]->isTransitioning()) {
+            anyTransitionHappening = true;
+            break;
+          }
+        }
+        if (!anyTransitionHappening) {
+          static int parity = 5;
+          static int lastSegmentChanged = -1;
+          for (int twice = 0; twice < 2; ++twice) {
+            int changeSegment;
+            do {
+              changeSegment = fast_rand(parity);
+            } while (changeSegment == lastSegmentChanged);
+            lastSegmentChanged = changeSegment;
+            
+            Color startColor = _lights[changeSegment]->color;
+            Color targetColor;
+            
+            // Black is a possible target, so make sure we don't transition to a completely black strand
+            bool allOtherLightsOff;
+            do {
+              targetColor = TwinkleRainbow[fast_rand(ARRAY_SIZE(TwinkleRainbow))];
+              allOtherLightsOff = true;
+              for (int seg = 0; seg < parity; ++seg) {
+                Color segColor = _lights[seg]->color;
+                if (seg != changeSegment && !ColorIsEqualToColor(segColor, kBlackColor)) {
+                  allOtherLightsOff = false;
+                  break;
+                }
+              }
+            } while (ColorIsEqualToColor(targetColor, kBlackColor) && allOtherLightsOff);
+            
+            for (int attempt = 0; attempt < 10; ++attempt) {
+              if (!ColorTransitionWillProduceWhite(startColor, targetColor) && !ColorIsEqualToColor(startColor, targetColor)) {
+                break;
+              }
+              targetColor = TwinkleRainbow[fast_rand(ARRAY_SIZE(TwinkleRainbow))];
+            }
+            for (unsigned i = changeSegment; i < _lightCount; i += parity) {
+              _lights[i]->transitionToColor(targetColor, 10);
+            }
+          }
+        }
+        break;
+      }
+      
       default: // Turn all off
         applyAll(kBlackColor);
         break;

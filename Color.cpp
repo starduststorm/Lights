@@ -36,3 +36,15 @@ Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intens
   return MakeColor(r, g, b);
 }
 
+bool ColorTransitionWillProduceWhite(Color c1, Color c2)
+{
+  byte halfRed = ((int)(c1.red + c2.red) >> 1);
+  byte halfGreen = ((int)(c1.green + c2.green) >> 1);
+  byte halfBlue = ((int)(c1.blue + c2.blue) >> 1);
+  
+  if (halfRed > 50 && halfGreen > 50 && halfBlue > 50) {
+    return true;
+  }
+  return false;
+}
+

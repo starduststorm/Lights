@@ -30,3 +30,5 @@ bool ColorIsNoColor(Color c);
 // Transition and intensity are both in the range [0, 100]
 Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity);
 
+bool ColorTransitionWillProduceWhite(Color c1, Color c2);
+
