@@ -11,6 +11,9 @@
 //     Bonus points if the fade got creative sometimes, and went pixel-at-a-time, 
 //     or did a bi-directional wipe, flashed away (party mode), or some other cool effect.
 // -----------------------------------------
+//
+// TODO: Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
+//
 
 static const unsigned int LED_COUNT = 100;
 

@@ -8,7 +8,6 @@ Color ROYGBIVRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kB
 
 typedef enum {
   ModeWaves,
-  ModeOneBigWave,
   ModeParity,
   ModeFire,
   ModeBlueFire,
@@ -20,6 +19,8 @@ typedef enum {
   ModeRainbow,
   ModeAccumulator,
   ModeCount,
+  // These are all either boring or need work.
+  ModeOneBigWave,
   ModeFollow,
   ModeBoomResponder,
   ModeBounce,
@@ -284,8 +285,27 @@ Mode Scene::randomMode()
   Mode matchingModes[ModeCount];
   for (int i = 0; i < ModeCount; ++i) {
     Mode mode = (Mode)i;
+    bool modeAllowed = true;
+
+#if WS2811
+    // Easter Egg (Christmas Egg?)
+    // If lights are left on for more than 8 hours, start including the lightning bugs scene
+    // If somone wanders about the house late at night, sees lightning bugs, and goes "huh, cool" I'll consider it a success.
+    static long kEightHours = 8L * 60L * 60L * 1000L;
+    if (mode == ModeLightningBugs && millis() < kEightHours) {
+      modeAllowed = false;
+    }
+#elif DEVELOPER_BOARD
+    // We have a dial for speed, which includes and excludes various modes
     DelayRange range = rangeForMode(mode);
-    if (frameDuration >= range.low && frameDuration <= range.high) {
+    modeAllowed = (frameDuration >= range.low && frameDuration <= range.high);
+#else
+    // Lightning bugs not allowed because we can't dial away from it
+    if (mode == ModeLightningBugs) {
+      modeAllowed = false;
+    }
+#endif
+    if (modeAllowed) {
       matchingModes[matchCount++] = mode;
     }
   }
@@ -549,7 +569,7 @@ void Scene::tick()
       }
       
       case ModeRainbow: {
-        const unsigned int waveLength = 10;
+        const unsigned int waveLength = 7;
         const float transitionRate = 120 / waveLength;
         
         for (int i = 0; i < _lightCount / waveLength; ++i) {
@@ -651,7 +671,12 @@ void Scene::tick()
           const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
           Color colors[parityCount];
           for (int i = 0; i < parityCount; ++i) {
-            colors[i] = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+            Color sourceColor = _lights[i]->color;
+            Color targetColor;
+            do {
+              targetColor = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
+            } while (ColorTransitionWillProduceWhite(sourceColor, targetColor));
+            colors[i] = targetColor;
           }
           for (int i = 0; i < _lightCount; ++i) {
             int parity = i % parityCount;
@@ -745,25 +770,37 @@ void Scene::tick()
             Color targetColor;
             
             // Black is a possible target, so make sure we don't transition to a completely black strand
-            bool allOtherLightsOff;
+            bool acceptableColor = false;
             do {
               targetColor = TwinkleRainbow[fast_rand(ARRAY_SIZE(TwinkleRainbow))];
-              allOtherLightsOff = true;
-              for (int seg = 0; seg < parity; ++seg) {
-                Color segColor = _lights[seg]->color;
-                if (seg != changeSegment && !ColorIsEqualToColor(segColor, kBlackColor)) {
-                  allOtherLightsOff = false;
-                  break;
+              
+              if (ColorIsEqualToColor(startColor, targetColor)) {
+                // Actually change the color
+                continue;
+              }
+              if (ColorTransitionWillProduceWhite(startColor, targetColor)) {
+                // Don't fade through white
+                continue;
+              }
+              
+              bool targetIsBlackColor = ColorIsEqualToColor(targetColor, kBlackColor);
+              if (targetIsBlackColor) {
+                bool transitioningToAllBlack = true;
+                for (int seg = 0; seg < parity; ++seg) {
+                  Color segColor = _lights[seg]->color;
+                  if (seg != changeSegment && !ColorIsEqualToColor(segColor, kBlackColor)) {
+                    transitioningToAllBlack = false;
+                    break;
+                  }
+                }
+                if (transitioningToAllBlack) {
+                  // who turned out the lights?
+                  continue;
                 }
               }
-            } while (ColorIsEqualToColor(targetColor, kBlackColor) && allOtherLightsOff);
+              acceptableColor = true;
+            } while (!acceptableColor);
             
-            for (int attempt = 0; attempt < 10; ++attempt) {
-              if (!ColorTransitionWillProduceWhite(startColor, targetColor) && !ColorIsEqualToColor(startColor, targetColor)) {
-                break;
-              }
-              targetColor = TwinkleRainbow[fast_rand(ARRAY_SIZE(TwinkleRainbow))];
-            }
             for (unsigned i = changeSegment; i < _lightCount; i += parity) {
               _lights[i]->transitionToColor(targetColor, 10);
             }
