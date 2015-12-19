@@ -8,7 +8,6 @@ Color ROYGBIVRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kB
 
 typedef enum {
   ModeWaves,
-  ModeParity,
   ModeFire,
   ModeBlueFire,
   ModeLightningBugs,
@@ -20,6 +19,7 @@ typedef enum {
   ModeAccumulator,
   ModeCount,
   // These are all either boring or need work.
+  ModeParity,
   ModeOneBigWave,
   ModeFollow,
   ModeBoomResponder,
@@ -787,7 +787,7 @@ void Scene::tick()
               if (targetIsBlackColor) {
                 bool transitioningToAllBlack = true;
                 for (int seg = 0; seg < parity; ++seg) {
-                  Color segColor = _lights[seg]->color;
+                  Color segColor = (_lights[seg]->isTransitioning() ? _lights[seg]->targetColor : _lights[seg]->color);
                   if (seg != changeSegment && !ColorIsEqualToColor(segColor, kBlackColor)) {
                     transitioningToAllBlack = false;
                     break;
@@ -802,7 +802,7 @@ void Scene::tick()
             } while (!acceptableColor);
             
             for (unsigned i = changeSegment; i < _lightCount; i += parity) {
-              _lights[i]->transitionToColor(targetColor, 10);
+              _lights[i]->transitionToColor(targetColor, 6);
             }
           }
         }

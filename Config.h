@@ -17,7 +17,7 @@
 #define DEBUG 0
 
 /* Options */
-#define TEST_MODE (ModeTwinkle)
+//#define TEST_MODE (ModeTwinkle)
 #define TRANSITION_TIME (80)
 #define FRAME_DURATION 80
 #define DEFAULT_BRIGHNESS 0.5
