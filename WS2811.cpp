@@ -3,7 +3,7 @@
 #include "WS2811.h"
 #include "Utilities.h"
 
-#if WS2811
+#if MEGA_WS2811
 
 WS2811Renderer::WS2811Renderer(unsigned int numPixels)
 {

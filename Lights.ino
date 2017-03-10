@@ -14,18 +14,18 @@
 //
 // TODO: Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
 //
-
-static const unsigned int LED_COUNT = 100;
+#include <Wire.h>
+static const unsigned int LED_COUNT = 480;
 
 #include <SPI.h>
 #include <TCL.h>
 
-#import "Config.h"
-#import "Utilities.h"
-#import "Color.h"
-#import "Light.h"
-#import "Scene.h"
-#import "WS2811.h"
+#include "Config.h"
+#include "Utilities.h"
+#include "Color.h"
+#include "Light.h"
+#include "Scene.h"
+#include "WS2811.h"
 
 static Scene *gLights;
 
@@ -37,14 +37,14 @@ void setup()
   logf("%ul millis: Serial logging started at %i baud", millis(), baud);
 #endif
 
-#if ARDUINO_DUE
+#if ARDUINO_TCL && ARDUINO_DUE
   // The Due is much faster, needs a higher clock divider to run the SPI at the right rate.
   // ATMega runs at clock div 2 for 4 MHz, the Due runs at 84 MHz, so needs clock div 42 for 4 MHz.
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(SPI_MODE0);
   SPI.setClockDivider(42);
-#elif !WS2811
+#elif ARDUINO_TCL
   TCL.begin();
 #endif
   
@@ -67,7 +67,7 @@ void loop()
 {
 #if SERIAL_LOGGING
   static unsigned int loopCount2 = 0;
-  if (loopCount2 % 100 == 0)
+  if (loopCount2 % 1000 == 0)
     logf("loop #%i", loopCount2);
   loopCount2++;
 #endif

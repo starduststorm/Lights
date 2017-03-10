@@ -1,4 +1,6 @@
 
+#ifndef COLOR_H
+#define COLOR_H
 
 struct Color {
   byte red;
@@ -31,4 +33,6 @@ bool ColorIsNoColor(Color c);
 Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity);
 
 bool ColorTransitionWillProduceWhite(Color c1, Color c2);
+
+#endif // COLOR_H
 

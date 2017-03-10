@@ -1,8 +1,17 @@
 
+#if TEENSY_WS2812
+#include "FastLED.h"
+#endif
 
 /* Tools */
+#ifndef MIN
 #define MIN(x, y) ((x) > (y) ? y : x)
+#endif
+
+#ifndef MAX
 #define MAX(x, y) ((x) < (y) ? y : x)
+#endif
+
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define MOD_DISTANCE(a, b, m) (abs(m / 2. - fmod((3 * m) / 2 + a - b, m)))
 

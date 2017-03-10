@@ -1,7 +1,7 @@
 
-#import "Config.h"
-#import "Arduino.h"
-#import "Color.h"
+#include "Config.h"
+#include "Arduino.h"
+#include "Color.h"
 
 void logf(const char *format, ...);
 

@@ -1,9 +1,12 @@
 
-#import "Config.h"
+#ifndef WS2811_H
+#define WS2811_H
 
-#if WS2811
+#include "Config.h"
 
-#define DIGITAL_PIN   (51)         // Digital port number
+#if MEGA_WS2811
+
+#define DIGITAL_PIN   (51)        // Digital port number
 #define PORT          (PORTB)     // Digital pin's port
 #define PORT_PIN      (PORTB2)    // Digital pin's bit position
 
@@ -19,4 +22,6 @@ public:
 };
 
 #endif
+
+#endif // WS2811_H
 

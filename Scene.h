@@ -10,8 +10,9 @@ typedef enum {
   ModeWaves,
   ModeFire,
   ModeBlueFire,
+  
   ModeLightningBugs,
-  ModeTwinkle,
+  ModeParity,
 #if ARDUINO_DUE
   ModeInterferingWaves,
 #endif
@@ -19,7 +20,9 @@ typedef enum {
   ModeAccumulator,
   ModeCount,
   // These are all either boring or need work.
-  ModeParity,
+  ModePinkFire,
+  ModeTwinkle,
+
   ModeOneBigWave,
   ModeFollow,
   ModeBoomResponder,
@@ -59,8 +62,10 @@ private:
   
   Light **_lights;
   
-#if WS2811
+#if MEGA_WS2811
   WS2811Renderer *ws2811Renderer;
+#elif TEENSY_WS2812
+  CRGB leds[LED_COUNT];
 #endif
   
   // Mode specific options
@@ -157,10 +162,11 @@ void Scene::updateStrand()
   } 
 #endif
   
-#if !WS2811
+  // Update per-pixel
+#if ARDUINO_TCL
   TCL.sendEmptyFrame();
 #endif
-  for (int i = 0; i < _lightCount; ++i) {
+  for (unsigned int i = 0; i < _lightCount; ++i) {
     Light *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
     
@@ -179,19 +185,31 @@ void Scene::updateStrand()
     green = min(green, 255);
     blue = min(blue, 255);
     
-#if !WS2811
+    if (red + green + blue < 5) {
+      // Avoid fades like yellow -> black showing (1,0,0) == red right at the end of the fadeout
+      red = green = blue = 0;
+    }
+    
+#if ARDUINO_TCL
     TCL.sendColor(red, green, blue);
-#else
+#elif MEGA_WS2811
     // Color corrections for the WS2811 strands I use
     red = min(1.1 * red, 255);
     
     ws2811Renderer->setPixel(i, red, green, blue);
+#elif TEENSY_WS2812 
+    // RGB == GRB? *shrug*
+    leds[i] = CRGB(green, red, blue);
 #endif
   }
-#if !WS2811
+
+  // Send to strand
+#if ARDUINO_TCL
   TCL.sendEmptyFrame();
-#else
+#elif MEGA_WS2811
   ws2811Renderer->render();
+#elif TEENSY_WS2812
+  FastLED.show(); 
 #endif
 }
 
@@ -199,14 +217,14 @@ void Scene::updateStrand()
 
 void Scene::applyAll(Color c)
 {
-  for (int i = 0; i < _lightCount; ++i) {
+  for (unsigned int i = 0; i < _lightCount; ++i) {
     _lights[i]->color = c;
   }
 }
 
 void Scene::transitionAll(Color c, float rate)
 {
-  for (int i = 0; i < _lightCount; ++i) {
+  for (unsigned int i = 0; i < _lightCount; ++i) {
     _lights[i]->transitionToColor(c, rate);
   }
 }
@@ -225,6 +243,7 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
   setDelayRangeForMode(kDelayRangeStandard, ModeFollow);
   setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModeFire);
   setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModeBlueFire);
+  setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModePinkFire);
   setDelayRangeForMode(MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration), ModeLightningBugs);
   setDelayRangeForMode(kDelayRangeStandard, ModeWaves);
   setDelayRangeForMode(MakeDelayRange(kMinStandardFrameDuration, 40), ModeOneBigWave);
@@ -235,14 +254,17 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
   
   _lightCount = lightCount;
   _lights = new Light*[_lightCount];
-  for (int i = 0; i < _lightCount; ++i) {
+  for (unsigned int i = 0; i < _lightCount; ++i) {
     _lights[i] = new Light();
   }
   _lastTick = millis();
   _lastFrame = _lastTick;
   
-#if WS2811
+#if MEGA_WS2811
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
+#elif TEENSY_WS2812
+  LEDS.addLeds<WS2812, TEENSY_PIN, RGB>(leds, LED_COUNT);
+  LEDS.setBrightness(100);
 #endif
   
   applyAll(kBlackColor);
@@ -287,7 +309,7 @@ Mode Scene::randomMode()
     Mode mode = (Mode)i;
     bool modeAllowed = true;
 
-#if WS2811
+#if MEGA_WS2811
     // Easter Egg (Christmas Egg?)
     // If lights are left on for more than 8 hours, start including the lightning bugs scene
     // If somone wanders about the house late at night, sees lightning bugs, and goes "huh, cool" I'll consider it a success.
@@ -355,7 +377,7 @@ void Scene::setMode(Mode mode)
     _leaders = NULL;
     
     // Initialize new mode
-    for (int i = 0; i < _lightCount; ++i) {
+    for (unsigned int i = 0; i < _lightCount; ++i) {
       _lights[i]->modeState = 0;
     }
     
@@ -408,6 +430,7 @@ void Scene::setMode(Mode mode)
           _lights[i]->transitionToColor(color, 10);
         }
         break;
+      default: break;
       }
     }
     _modeStart = millis();
@@ -432,13 +455,13 @@ void Scene::tick()
   static bool allOff = false;
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!allOff) {
-      for (int i = 0; i < _lightCount; ++i) {
+      for (unsigned int i = 0; i < _lightCount; ++i) {
         _lights[i]->transitionToColor(kBlackColor, 3, LightTransitionEaseOut);
       }
       allOff = true;
     }
     if (_lights[0]->isTransitioning()) {
-      for (int i = 0; i < _lightCount; ++i) {
+      for (unsigned int i = 0; i < _lightCount; ++i) {
         _lights[i]->transitionTick(1);
       }
       updateStrand();
@@ -485,11 +508,21 @@ void Scene::tick()
       }
       
       case ModeFire:
-      case ModeBlueFire: {
+      case ModeBlueFire:
+      case ModePinkFire: {
         // Interpolate, fade, and snap between two colors
-        Color c1 = (_mode == ModeFire ? MakeColor(0xFF, 0x30, 0) : MakeColor(0x30, 0x10, 0xFF));
-        Color c2 = (_mode == ModeFire ? MakeColor(0xFF, 0x80, 0) : MakeColor(0, 0xB0, 0xFF));
-        for (int i = 0; i < _lightCount; ++i) {
+        Color c1, c2;
+        if (_mode == ModePinkFire) {
+          c1 = MakeColor(0xFF, 0x0, 0xB4);
+          c2 = MakeColor(0xFF, 0x0, 0xB4);
+        } else if (_mode == ModeBlueFire) {
+          c1 = MakeColor(0x30, 0x10, 0xFF);
+          c2 = MakeColor(0, 0xB0, 0xFF);
+        } else {
+          c1 = MakeColor(0xFF, 0x30, 0);
+          c2 = MakeColor(0xFF, 0x80, 0); 
+        }
+        for (unsigned int i = 0; i < _lightCount; ++i) {
           Light *light = _lights[i];
           if (!(light->isTransitioning())) {
             long choice = fast_rand(100);
@@ -513,7 +546,7 @@ void Scene::tick()
       }
       
       case ModeLightningBugs: {
-        for (int i = 0; i < _lightCount; ++i) {
+        for (unsigned int i = 0; i < _lightCount; ++i) {
           Light *light = _lights[i];
           if (!light->isTransitioning()) {
             switch (light->modeState) {
@@ -557,7 +590,7 @@ void Scene::tick()
         const float transitionRate = 80 / (waveLength / 2.0);
         
         Color waveColor = getAutomaticColor(0);
-        for (int i = 0; i < _lightCount / waveLength; ++i) {
+        for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
           unsigned int turnOnLeaderIndex = (_followLeader + i * waveLength) % _lightCount;
           unsigned int turnOffLeaderIndex = (_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
           _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
@@ -572,7 +605,7 @@ void Scene::tick()
         const unsigned int waveLength = 7;
         const float transitionRate = 120 / waveLength;
         
-        for (int i = 0; i < _lightCount / waveLength; ++i) {
+        for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
           unsigned int changeIndex = (_followLeader + i * waveLength) % _lightCount;
           Color waveColor = ROYGBIVRainbow[(_followColorIndex + i) % ARRAY_SIZE(ROYGBIVRainbow)];
           _lights[changeIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
@@ -592,11 +625,11 @@ void Scene::tick()
         unsigned long modeTime = millis() - _modeStart;
         bool inModeTransition = modeTime < kFadeTime;
 
-#if ARDUINO_DUE
-        bzero(_colorScratch, _lightCount * sizeof(Color));
-#else
+//#if ARDUINO_DUE
+//        bzero(_colorScratch, _lightCount * sizeof(Color));
+//#else
         memset(_colorScratch, 0, _lightCount * sizeof(Color));
-#endif
+//#endif
         
         float lightsChunk = _lightCount / (float)_automaticColorsCount;
         for (int waveIndex = 0; waveIndex < _automaticColorsCount; ++waveIndex) {
@@ -678,7 +711,7 @@ void Scene::tick()
             } while (ColorTransitionWillProduceWhite(sourceColor, targetColor));
             colors[i] = targetColor;
           }
-          for (int i = 0; i < _lightCount; ++i) {
+          for (unsigned int i = 0; i < _lightCount; ++i) {
             int parity = i % parityCount;
             _lights[i]->transitionToColor(colors[parity], 2);
           }
@@ -686,7 +719,7 @@ void Scene::tick()
         break;
      
       case ModeBoomResponder:
-        for (int i = 0; i < _lightCount; ++i) {
+        for (unsigned int i = 0; i < _lightCount; ++i) {
           if (!_lights[i]->isTransitioning()) {
             _lights[i]->transitionToColor(NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))], 10);
           }
@@ -703,7 +736,7 @@ void Scene::tick()
         static unsigned long long lastPing = 0;
        
         unsigned long mils = millis();
-        const int pingRate = 20000 / _lightCount;
+        const  unsigned int pingRate = 20000 / _lightCount;
         if (mils - lastPing > pingRate) {
           unsigned int ping = fast_rand(_lightCount);
           Color c = NamedRainbow[fast_rand(ARRAY_SIZE(NamedRainbow))];
@@ -818,7 +851,7 @@ void Scene::tick()
   
   // Fade transitions
   float transitionMultiplier = (tickTime / ((float)frameDuration * _frameDurationMultiplier));
-  for (int i = 0; i < _lightCount; ++i) {
+  for (unsigned int i = 0; i < _lightCount; ++i) {
     _lights[i]->transitionTick(transitionMultiplier);
   }
   
