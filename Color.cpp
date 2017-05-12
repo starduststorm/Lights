@@ -1,6 +1,11 @@
 
 #include "Arduino.h"
 #include "Color.h"
+#include "Utilities.h"
+
+Palette RGBRainbow(6, kRedColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor);
+Palette NamedRainbow(9, kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kIndigoColor, kVioletColor, kMagentaColor);
+Palette ROYGBIVRainbow(7, kRedColor, kOrangeColor, kYellowColor, kGreenColor, kBlueColor, kIndigoColor, kVioletColor);
 
 struct Color MakeColor(byte r, byte g, byte b)
 {
@@ -46,5 +51,47 @@ bool ColorTransitionWillProduceWhite(Color c1, Color c2)
     return true;
   }
   return false;
+}
+
+Palette::Palette(unsigned int count, ...)
+{
+  colors = (Color *)malloc(count * sizeof(Color));
+
+  this->count = count;
+
+  va_list args;
+  va_start(args, count);
+  
+  for (unsigned int i = 0; i < count; ++i) {
+    colors[i] = va_arg(args, Color);
+  }
+  
+  va_end(args);
+}
+
+Palette::~Palette()
+{
+  delete colors;
+}
+
+Color Palette::randomColor()
+{
+  return colors[fast_rand(count)];
+}
+
+Color Palette::getColor(float location)
+{
+  // ensure location is positive and in range
+  location = fmodf(fmodf(location, count) + count, count);
+  
+  if ((int)location == location) {
+    return colors[(int)location];
+  } else {
+    float index;
+    float fraction = modff(location, &index);
+    Color c1 = colors[(int)index];
+    Color c2 = colors[(int)index + 1];
+    return ColorWithInterpolatedColors(c1, c2, 100 * fraction, 100);
+  }
 }
 

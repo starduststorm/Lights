@@ -5,17 +5,23 @@
 
 
 // -----------------------------------------
-// Pattern Ideas:
-// 
+//
+// Pattern Ideas: 
 // A pattern that just fades to a color, and stays there for a few seconds. It's interesting to have the world be a solid color and stay still, too.
 //     Bonus points if the fade got creative sometimes, and went pixel-at-a-time, 
 //     or did a bi-directional wipe, flashed away (party mode), or some other cool effect.
+// A pattern like Accumulator but with wider sweeps of color, maybe less blending.
 // -----------------------------------------
 //
-// TODO: Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
+// TODOs!: 
+// 1. Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
+// 2. Nuke the whole "frameDuration" concept. Base everything on millis. This'll hopefully get rid of the rare glitchy mode changes. Can still adjust speed with the dial.
+// 3. Refactor cruft in Scene.h so patterns are actually modularized.
+// 4. Get rid of "Twinkle." It sucks. Replace it with something good.
+// -----------------------------------------
 //
 #include <Wire.h>
-static const unsigned int LED_COUNT = 480;
+static const unsigned int LED_COUNT = 100;
 
 #include <SPI.h>
 #include <TCL.h>

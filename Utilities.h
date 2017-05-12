@@ -1,4 +1,5 @@
 
+#include "Config.h"
 
 struct Color;
 

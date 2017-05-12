@@ -34,5 +34,20 @@ Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intens
 
 bool ColorTransitionWillProduceWhite(Color c1, Color c2);
 
+class Palette {
+public:
+  Palette(unsigned int count, ...);
+  ~Palette();
+  Color randomColor();
+  Color getColor(float location);
+  unsigned int count;
+private:
+  Color *colors;
+};
+
+extern Palette RGBRainbow;
+extern Palette NamedRainbow;
+extern Palette ROYGBIVRainbow;
+
 #endif // COLOR_H
 
