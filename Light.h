@@ -30,14 +30,14 @@ public:
   Color targetColor;
   Color originalColor;
   
-  float transitionProgress; // [0, 1]
-  float transitionRate; // percentage to transition per frame
-  LightTransitionCurve transitionCurve;
+  float progress; // [0, 1]
+  float duration; // in seconds
+  LightTransitionCurve curve;
   
   void transitionToColor(Color transitionTargetColor, float rate, LightTransitionCurve curve);
   void transitionToColor(Color transitionTargetColor, float rate);
   void stopTransition();
-  void transitionTick(float multiplier);
+  void transitionTick(unsigned long milliseconds);
   bool isTransitioning();
 #if SERIAL_LOGGING
   void printDescription();
@@ -46,39 +46,41 @@ public:
   int modeState; // For the Scene mode to use to store state
 };
 
-Light::Light() : transitionRate(0)
+Light::Light() : duration(0), progress(1.0)
 {
 }
 
-void Light::transitionToColor(Color transitionTargetColor, float rate, LightTransitionCurve curve)
+// FIXME: Add a special transition mode which ignores global speed, use for lightning bugs, power switch, etc.
+
+void Light::transitionToColor(Color transitionTargetColor, float durationInSeconds, LightTransitionCurve curve)
 {
-  if (rate <= 0) {
-    rate = 1;
+  if (durationInSeconds <= 0) {
+    durationInSeconds = 1;
   }
   targetColor = transitionTargetColor;
   originalColor = color;
-  transitionRate = rate / 100.0;
-  transitionProgress = 0;
-  transitionCurve = curve;
+  duration = durationInSeconds;
+  progress = 0;
+  curve = curve;
 }
 
-void Light::transitionToColor(Color transitionTargetColor, float rate)
+void Light::transitionToColor(Color transitionTargetColor, float duration)
 {
-  transitionToColor(transitionTargetColor, rate, LightTransitionLinear);
+  transitionToColor(transitionTargetColor, duration, LightTransitionLinear);
 }
 
 void Light::stopTransition()
 {
-  transitionRate = 0;
+  progress = 1.0;
 }
 
-void Light::transitionTick(float multiplier)
+void Light::transitionTick(unsigned long milliseconds)
 {
-  if (transitionRate > 0) {
-    transitionProgress = MIN(transitionProgress + multiplier * transitionRate, 1.0);
-    float curvedTransitionProgress = transitionProgress;
+  if (progress < 1.0) {
+    progress = MIN(progress + milliseconds / (duration * 1000), 1.0);
+    float curvedTransitionProgress = progress;
     
-    switch (transitionCurve) {
+    switch (curve) {
       case LightTransitionLinear:
         break;
       case LightTransitionEaseIn:
@@ -95,15 +97,15 @@ void Light::transitionTick(float multiplier)
     color.green = originalColor.green + curvedTransitionProgress * (targetColor.green - originalColor.green);
     color.blue = originalColor.blue + curvedTransitionProgress * (targetColor.blue - originalColor.blue);
     
-    if (transitionProgress >= 1) {
-      transitionRate = 0;
+    if (progress >= 1) {
+      progress = 1.0;
     }
   }
 }
 
 bool Light::isTransitioning()
 {
-  return (transitionRate != 0);
+  return (progress < 1.0);
 }
 
 #if SERIAL_LOGGING

@@ -14,10 +14,9 @@
 // -----------------------------------------
 //
 // TODOs!: 
-// 1. Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
-// 2. Nuke the whole "frameDuration" concept. Base everything on millis. This'll hopefully get rid of the rare glitchy mode changes. Can still adjust speed with the dial.
-// 3. Refactor cruft in Scene.h so patterns are actually modularized.
-// 4. Get rid of "Twinkle." It sucks. Replace it with something good.
+// * Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
+// * Refactor cruft in Scene.h so patterns are actually modularized.
+// * Get rid of "Twinkle." It sucks. Replace it with something good.
 // -----------------------------------------
 //
 #include <Wire.h>
@@ -66,16 +65,24 @@ void setup()
 #else
   gLights->setMode(gLights->randomMode());
 #endif
-  gLights->frameDuration = 100;
 }
 
 void loop()
 {
 #if SERIAL_LOGGING
-  static unsigned int loopCount2 = 0;
-  if (loopCount2 % 1000 == 0)
-    logf("loop #%i", loopCount2);
-  loopCount2++;
+  static unsigned int framesPast = 0;
+  static unsigned long lastPrint = 0;
+  
+  unsigned long mils = millis();
+  
+  if (mils - lastPrint > 4000) {
+    float framerate = 1000.0 * framesPast / (mils - lastPrint);
+    logf("Framerate: %0.2f", framerate);
+    lastPrint = mils;
+    framesPast = 0;
+  } else {
+    framesPast++;
+  }
 #endif
   
 #if DEBUG && SERIAL_LOGGING && !ARDUINO_DUE
