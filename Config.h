@@ -24,9 +24,8 @@
 #define DEBUG 0
 
 /* Options */
-//#define TEST_MODE (ModeRainbow)
-#define TRANSITION_TIME (80)
-#define FRAME_DURATION 80
+//#define TEST_MODE (ModeLightningBugs)
+#define MODE_TIME (80)
 #define DEFAULT_BRIGHNESS 1.0
 
 #if DEVELOPER_BOARD

@@ -8,20 +8,20 @@ public:
   ColorMaker();
   ~ColorMaker();
 
-  void prepColors(unsigned int count, float rate);
+  void prepColors(unsigned int count, float duration);
   Color getColor(unsigned int index);
-  void tick();
+  void tick(unsigned long milliseconds);
   
   void reset();
 
   Color palette[];
 private:
-  float rate;
+  float duration; // in seconds
   unsigned int count;
   
   Color *colors = NULL;
   Color *colorTargets = NULL;
-  float *colorProgress = NULL; // 0-100%
+  float *colorProgress = NULL; // [0.0, 1.0]
   Color *colorCache = NULL;
 };
 
@@ -35,11 +35,11 @@ ColorMaker::~ColorMaker()
   this->reset();
 }
 
-void ColorMaker::prepColors(unsigned int count, float rate)
+void ColorMaker::prepColors(unsigned int count, float duration) // duration per color target
 {
   this->reset();
   this->count = count;
-  this->rate = rate;
+  this->duration = duration;
   
   if (count > 0) {
     colors = (Color *)malloc(count * sizeof(Color));
@@ -59,20 +59,21 @@ void ColorMaker::prepColors(unsigned int count, float rate)
 Color ColorMaker::getColor(unsigned int index)
 {
   if (ColorIsNoColor(colorCache[index])) {
-    colorCache[index] = ColorWithInterpolatedColors(colors[index], colorTargets[index], colorProgress[index], 100);
+    colorCache[index] = ColorWithInterpolatedColors(colors[index], colorTargets[index], colorProgress[index] * 100, 100);
   }
   return colorCache[index];
 }
 
-void ColorMaker::tick()
+void ColorMaker::tick(unsigned long milliseconds)
 {
-  for (int i = 0; i < count; ++i) {
-    if (colorProgress[i] == 0 || colorProgress[i] >= 100) {
+  float progress = milliseconds / 1000.0 / duration;
+  for (unsigned int i = 0; i < count; ++i) {
+    colorProgress[i] += progress;
+    if (colorProgress[i] == 0 || colorProgress[i] >= 1.0) {
       colorProgress[i] = 0;
       colors[i] = colorTargets[i];
       colorTargets[i] = NamedRainbow.randomColor();
     }
-    colorProgress[i] += rate;
     colorCache[i] = kNoColor;
   }
 }

@@ -21,31 +21,30 @@ typedef enum {
   ModeTwinkle,
 
   ModeOneBigWave,
-  ModeFollow,
   ModeBoomResponder,
   ModeBounce,
 } Mode;
 
-struct DelayRange {
-  unsigned int low;
-  unsigned int high;
+struct SpeedRange {
+  float low;
+  float high;
 };
-typedef struct DelayRange DelayRange;
+typedef struct SpeedRange SpeedRange;
 
-static struct DelayRange MakeDelayRange(unsigned int low, unsigned int high)
+static struct SpeedRange SpeedRangeMake(float low, float high)
 {
-  DelayRange r;
+  SpeedRange r;
   r.low = low;
   r.high = high;
   return r;
 }
 
-static const unsigned int kMaxFrameDuration = 112;
-static const unsigned int kMaxStandardFrameDuration = kMaxFrameDuration - 2;
-static const unsigned int kMinStandardFrameDuration = 2;
-static const DelayRange kDelayRangeStandard = MakeDelayRange(kMinStandardFrameDuration, kMaxStandardFrameDuration);
+static const float kSpeedMax = 2.0;
+static const float kSpeedNormalMin = 0.5;
+static const float kSpeedMin = 0.4;
+static const SpeedRange kSpeedNormalRange = SpeedRangeMake(kSpeedNormalMin, kSpeedMax);
 
-static DelayRange kModeRanges[ModeCount] = {0};
+static SpeedRange kModeRanges[ModeCount] = {0};
 
 static const unsigned int kInterferringWavesNum = 5;
 
@@ -57,7 +56,6 @@ private:
   Mode _mode;
   unsigned long _modeStart=0;
   unsigned long _lastTick=0;
-  unsigned long _lastFrame=0;
   
   Light **_lights;
   
@@ -66,29 +64,30 @@ private:
 #elif TEENSY_WS2812
   CRGB leds[LED_COUNT];
 #endif
-  
-  // Mode specific options
-  float _frameDurationMultiplier;
+
+  float _globalSpeed; // Multiplier for global follow and fade speed
+  ColorMaker *_colorMaker = NULL;
+
+  // "Follow" convenience counter
+  float _followLeader=0;
+  float _followSpeed; // number of lights lights / s that the _followLeader moves
+  bool _directionIsReversed;
   
   // Mode specific data
-  float _followLeader=0;
-  Color _followColor;
   unsigned int _followColorIndex=0;
   Color *_colorScratch=NULL;
-  
   float *_sceneVariation = NULL;
-
-  ColorMaker *_colorMaker = NULL;
-   
-  float _transitionProgress=0;
-  Color _targetColor;
-  bool _directionIsReversed;
   unsigned int _soundPeak;
+  float *_leaders = NULL; // for interfering waves
+  unsigned long _timeMarker=0;
+  
+  //
   
   void transitionAll(Color c, float rate);
   
   void updateStrand();
-  DelayRange rangeForMode(Mode mode);
+  SpeedRange speedRangeForMode(Mode mode);
+
 public:
   void applyAll(Color c);
   void tick();
@@ -96,11 +95,6 @@ public:
   void setMode(Mode mode);
   ~Scene();
   Mode randomMode();
-  
-  unsigned int frameDuration; // millisecond delay between frames
-  float frameDurationFloat; // Needed to compare values to current potentiometer to ignore noise
-  
-  float *_leaders = NULL; // for interfering waves
 };
 
 #pragma mark - Private
@@ -222,26 +216,20 @@ void Scene::transitionAll(Color c, float rate)
 
 #pragma mark - Public
 
-void setDelayRangeForMode(DelayRange delayRange, Mode mode)
+void setSpeedRangeForMode(SpeedRange speedRange, Mode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
-    kModeRanges[mode] = delayRange;
+    kModeRanges[mode] = speedRange;
   }
 }
 
-Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
-{
-  setDelayRangeForMode(kDelayRangeStandard, ModeFollow);
-  setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModeFire);
-  setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModeBlueFire);
-  setDelayRangeForMode(MakeDelayRange(50, kMaxStandardFrameDuration), ModePinkFire);
-  setDelayRangeForMode(MakeDelayRange(kMaxStandardFrameDuration, kMaxFrameDuration), ModeLightningBugs);
-  setDelayRangeForMode(kDelayRangeStandard, ModeWaves);
-  setDelayRangeForMode(MakeDelayRange(kMinStandardFrameDuration, 40), ModeOneBigWave);
-#if ARDUINO_DUE
-  setDelayRangeForMode(kDelayRangeStandard, ModeInterferingWaves);
-#endif
-  setDelayRangeForMode(MakeDelayRange(0, kMaxStandardFrameDuration), ModeParity);
+Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0)
+{ 
+  setSpeedRangeForMode(SpeedRangeMake(0.7, 1.3), ModeFire);
+  setSpeedRangeForMode(speedRangeForMode(ModeFire), ModeBlueFire);
+  setSpeedRangeForMode(speedRangeForMode(ModeFire), ModePinkFire);
+  
+  setSpeedRangeForMode(SpeedRangeMake(kSpeedMin, kSpeedMin + 0.2), ModeLightningBugs);
   
   _lightCount = lightCount;
   _lights = new Light*[_lightCount];
@@ -249,7 +237,6 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), frameDuration(100)
     _lights[i] = new Light();
   }
   _lastTick = millis();
-  _lastFrame = _lastTick;
   
 #if MEGA_WS2811
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
@@ -272,16 +259,16 @@ Scene::~Scene()
   delete[] _lights;
 }
 
-DelayRange Scene::rangeForMode(Mode mode)
+SpeedRange Scene::speedRangeForMode(Mode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
     if (kModeRanges[mode].low == 0 && kModeRanges[mode].high == 0) {
       // It's just unset, treat it like middle speed
-      return kDelayRangeStandard;
+      return kSpeedNormalRange;
     }
     return kModeRanges[mode];
   }
-  return kDelayRangeStandard;
+  return kSpeedNormalRange;
 }
 
 Mode Scene::randomMode()
@@ -302,8 +289,8 @@ Mode Scene::randomMode()
     }
 #elif DEVELOPER_BOARD
     // We have a dial for speed, which includes and excludes various modes
-    DelayRange range = rangeForMode(mode);
-    modeAllowed = (frameDuration >= range.low && frameDuration <= range.high);
+    SpeedRange range = speedRangeForMode(mode);
+    modeAllowed = (_globalSpeed >= range.low && _globalSpeed <= range.high);
 #else
     // Lightning bugs not allowed because we can't dial away from it
     if (mode == ModeLightningBugs) {
@@ -329,18 +316,18 @@ void Scene::setMode(Mode mode)
     switch (_mode) {
       case ModeLightningBugs:
         // When ending lightning bugs, have all the bugs go out
-        transitionAll(kNightColor, 10);
+        transitionAll(kNightColor, 1);
         break;
       default:
         break;
     }
     
     _mode = mode;
-    _frameDurationMultiplier = 1;
+    
     _soundPeak = 0;
     
     int automaticColorsCount = 0;
-    float automaticColorsRate = 1.0;
+    float automaticColorsDuration = 2.0;
     
     free(_colorScratch);
     _colorScratch = NULL;
@@ -357,58 +344,46 @@ void Scene::setMode(Mode mode)
     }
 
     _followLeader = fast_rand(_lightCount);
+    _followSpeed = 8; // 8 lights per second by default
+    _timeMarker = 0;
     
     switch (_mode) {
-      case ModeBounce:
-      case ModeFollow: {
-        // When starting follow, there are sometimes single lights stuck on until the follow lead gets there. 
-        // This keeps it from looking odd and too dark
-        Color fillColor = ColorWithInterpolatedColors(RGBRainbow.randomColor(), kBlackColor, fast_rand(20, 60) / 10.0, 100);
-        transitionAll(fillColor, 5);
-        break;
-      }
       case ModeLightningBugs:
-        transitionAll(kNightColor, 10);
+        transitionAll(kNightColor, 0.4);
         break;
 #if ARDUINO_DUE
       case ModeInterferingWaves:
-        _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
-        
         automaticColorsCount = _lightCount / (float)kInterferringWavesNum;
         _sceneVariation = (float *)malloc(automaticColorsCount * sizeof(float));
         _leaders = (float *)malloc(automaticColorsCount * sizeof(float));
         for (int i = 0; i < automaticColorsCount; ++i) {
           _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 10.0;
         }
-        automaticColorsRate = 0.1;
+        automaticColorsDuration = 3.0;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
 #endif
       case ModeWaves:
       case ModeOneBigWave: {
-        _targetColor = RGBRainbow.randomColor();
-        _frameDurationMultiplier = 2;
         automaticColorsCount = 1;
-        automaticColorsRate = 0.2;
+        automaticColorsDuration = 4.0;
         break;
       case ModeRainbow:
-        _frameDurationMultiplier = 1;
         _followColorIndex = fast_rand(ROYGBIVRainbow.count);
         break;
       case ModeAccumulator:
-        _frameDurationMultiplier = 0.5;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
       case ModeTwinkle:
         for (unsigned i = 0; i < _lightCount; ++i) {
           Color color = ROYGBIVRainbow.randomColor();
-          _lights[i]->transitionToColor(color, 10);
+          _lights[i]->transitionToColor(color, 0.1);
         }
         break;
       default: break;
       }
     }
-    _colorMaker->prepColors(automaticColorsCount, automaticColorsRate);
+    _colorMaker->prepColors(automaticColorsCount, automaticColorsDuration);
     _directionIsReversed = (fast_rand(2) == 0);
     _modeStart = millis();
   }
@@ -416,18 +391,24 @@ void Scene::setMode(Mode mode)
 
 void Scene::tick()
 {
+  unsigned long long time = millis();
+  unsigned long long tickTime = (time - _lastTick) * _globalSpeed;
+  _lastTick = time;
+
+  // Fade transitions
+  for (unsigned int i = 0; i < _lightCount; ++i) {
+    _lights[i]->transitionTick(tickTime);
+  }
+  
   static bool allOff = false;
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!allOff) {
       for (unsigned int i = 0; i < _lightCount; ++i) {
-        _lights[i]->transitionToColor(kBlackColor, 3, LightTransitionEaseOut);
+        _lights[i]->transitionToColor(kBlackColor, 1, LightTransitionEaseOut);
       }
       allOff = true;
     }
     if (_lights[0]->isTransitioning()) {
-      for (unsigned int i = 0; i < _lightCount; ++i) {
-        _lights[i]->transitionTick(1);
-      }
       updateStrand();
     } else {
       // Just sleep after we're done fading
@@ -438,263 +419,247 @@ void Scene::tick()
     allOff = false;
   }
   
-  unsigned long long time = millis();
-  unsigned long long tickTime = time - _lastTick;
-  unsigned long long frameTime = time - _lastFrame;
+  _followLeader += (_directionIsReversed ? -1 : 1) * (_followSpeed * tickTime / 1000.0);
+  _followLeader = fmodf(_followLeader + _lightCount, _lightCount);
+
+  _colorMaker->tick(tickTime);
   
-#if DEBUG && SERIAL_LOGGING
-  static int tickCount = 0;
-  static float avgTickTime = 0;
-  avgTickTime = (avgTickTime * tickCount + tickTime) / (float)(tickCount + 1);
-  tickCount++;
-  if (tickCount > 100) {
-    Serial.print("Avg tick time: ");
-    Serial.print(avgTickTime);
-    Serial.print(", ");
-    Serial.print((int)(1000 / avgTickTime));
-    Serial.println("fps");
-    tickCount = 0;
-  }
-#endif
-  
-  if (frameTime > frameDuration * _frameDurationMultiplier) {
-    switch (_mode) {
-      case ModeFire:
-      case ModeBlueFire:
-      case ModePinkFire: {
-        // Interpolate, fade, and snap between two colors
-        Color c1, c2;
-        if (_mode == ModePinkFire) {
-          c1 = MakeColor(0xFF, 0x0, 0xB4);
-          c2 = MakeColor(0xFF, 0x0, 0xB4);
-        } else if (_mode == ModeBlueFire) {
-          c1 = MakeColor(0x30, 0x10, 0xFF);
-          c2 = MakeColor(0, 0xB0, 0xFF);
-        } else {
-          c1 = MakeColor(0xFF, 0x30, 0);
-          c2 = MakeColor(0xFF, 0x80, 0); 
-        }
-        for (unsigned int i = 0; i < _lightCount; ++i) {
-          Light *light = _lights[i];
-          if (!(light->isTransitioning())) {
-            long choice = fast_rand(100);
-            
-            if (choice < 10) {
-              // 10% of the time, fade slowly to black
-              light->transitionToColor(kBlackColor, 20);
-            } else {
-              // Otherwise, fade or snap to another color
-              Color color2 = (fast_rand(2) ? c1 : c2);
-              if (choice < 95) {
-                Color mixedColor = ColorWithInterpolatedColors(light->color, color2, fast_rand(101), fast_rand(101));
-                light->transitionToColor(mixedColor, 30);
-              } else {
-                light->color = color2;
-              }
-            }
-          }
-        }
-        break;
+  switch (_mode) {
+    case ModeFire:
+    case ModeBlueFire:
+    case ModePinkFire: {
+      // Interpolate, fade, and snap between two colors
+      Color c1, c2;
+      if (_mode == ModePinkFire) {
+        c1 = MakeColor(0xFF, 0x0, 0xB4);
+        c2 = MakeColor(0xFF, 0x0, 0xB4);
+      } else if (_mode == ModeBlueFire) {
+        c1 = MakeColor(0x30, 0x10, 0xFF);
+        c2 = MakeColor(0, 0xB0, 0xFF);
+      } else {
+        c1 = MakeColor(0xFF, 0x30, 0);
+        c2 = MakeColor(0xFF, 0x80, 0); 
       }
-      
-      case ModeLightningBugs: {
-        for (unsigned int i = 0; i < _lightCount; ++i) {
-          Light *light = _lights[i];
-          if (!light->isTransitioning()) {
-            switch (light->modeState) {
-              case 1:
-                // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-                light->transitionToColor(kBlackColor, 20);
-                light->modeState = 2;
-                break;
-              case 2:
-                light->transitionToColor(kNightColor, 20);
-                light->modeState = 0;
-                break;
-              default:
-                if (fast_rand(500) == 0) {
-                  // Blinky blinky
-                  light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 30);
-                  light->modeState = 1;
-                }
-                break;
-            }
-          }
-        }
-        break;
-      }
-      
-      case ModeBounce: {
-        static int direction = 1;
-        _lights[(int)_followLeader]->transitionToColor(kBlackColor, 10);
-        _followLeader = _followLeader + direction;
-        _lights[(int)_followLeader]->color = RGBRainbow.randomColor();
-        if (_followLeader == _lightCount - 1  || _followLeader == 0) {
-          direction = -direction;
-        }
-        break;
-      }
-      
-      case ModeWaves:
-      case ModeOneBigWave: {
-        const unsigned int waveLength = (_mode == ModeWaves ? 15 : _lightCount);
-        // Needs to fade out over less than half a wave, so there are some off in the middle.
-        const float transitionRate = 80 / (waveLength / 2.0);
-        
-        Color waveColor = _colorMaker->getColor(0);
-        for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
-          unsigned int turnOnLeaderIndex = ((int)_followLeader + i * waveLength) % _lightCount;
-          unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
-          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
-          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, LightTransitionEaseOut);
-        }
-        break;
-      }
-      
-      case ModeRainbow: {
-        const unsigned int waveLength = 7;
-        const float transitionRate = 120 / waveLength;
-        
-        for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
-          unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
-          Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
-          _lights[changeIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
-        }
-        break;
-      }
-      
-#if ARDUINO_DUE
-      case ModeInterferingWaves: {
-        const int waveLength = 22;
-        const float halfWave = waveLength / 2;
-        
-        // For the first 3 seconds of interfering waves, fade from previous mode
-        static const int kFadeTime = 3000;
-        unsigned long modeTime = millis() - _modeStart;
-        bool inModeTransition = modeTime < kFadeTime;
-        
-        memset(_colorScratch, 0, _lightCount * sizeof(Color));
-        
-        float lightsChunk = _lightCount / (float)kInterferringWavesNum;
-        for (int waveIndex = 0; waveIndex < kInterferringWavesNum; ++waveIndex) {
-          if (waveIndex < kInterferringWavesNum / 2.0) { // Half the colors going in each direction
-            _leaders[waveIndex] = _followLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        Light *light = _lights[i];
+        if (!(light->isTransitioning())) {
+          long choice = fast_rand(100);
+          
+          if (choice < 10) {
+            // 10% of the time, fade slowly to black
+            light->transitionToColor(kBlackColor, 0.5);
           } else {
-            int normalizedWavedIndex = waveIndex - kInterferringWavesNum / 2.0;
-            _leaders[waveIndex] = _lightCount - (_followLeader + 2 * normalizedWavedIndex * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
-          }
-          
-          Color waveColor = _colorMaker->getColor(waveIndex);
-          
-          for (int w = -halfWave; w < halfWave; ++w) {
-            int lightIndex = (int)(_leaders[waveIndex] + w + _lightCount) % _lightCount;
-            float distance = MOD_DISTANCE(lightIndex, _leaders[waveIndex], _lightCount);
-            if (distance < halfWave) {
-              
-              Color existingColor = _colorScratch[lightIndex];
-              
-              float litRatio = (existingColor.red + existingColor.green + existingColor.blue) / (float)(3 * 255);
-              // If the existing light is less than 3% lit, use the whole new color. Otherwise smoothly fade into splitting the difference.
-              float additionalFade = (litRatio < 0.03 ? 50 : (litRatio > 0.1 ? 0 : (50 - 50 * litRatio / 0.1)));
-              
-//              logf("Existing color = (%i, %i, %i), litRation = %f, additionalFade = %f", existingColor.red, existingColor.green, existingColor.blue, litRatio, additionalFade);
-              
-              Color color = ColorWithInterpolatedColors(existingColor, waveColor,
-                                                       ((1 - distance / halfWave) * (50 + additionalFade)),
-                                                       100);
-              _colorScratch[lightIndex] = color;
-              
-              float red = color.red, green = color.green, blue = color.blue;
-              red /= 255;
-              red *= red;
-              red *= 255;
-              
-              green /= 255;
-              green *= green;
-              green *= 255;
-              
-              blue /= 255;
-              blue *= blue;
-              blue *= 255;
-              
-              color.red = red, color.blue = blue, color.green = green;
-              
-              if (inModeTransition) {
-                // Fade from previous mode
-                color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 100, 100);
-              }
-              
-              _lights[lightIndex]->color = color;
-            }
-          }
-        }
-        // Black out all other lights
-        for (unsigned int i = 0; i < _lightCount; ++i) {
-          if (ColorIsEqualToColor(_colorScratch[i], kBlackColor)) {
-            if (inModeTransition) {
-              _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, (float)modeTime / kFadeTime * 100, 100);
+            // Otherwise, fade or snap to another color
+            Color color2 = (fast_rand(2) ? c1 : c2);
+            if (choice < 95) {
+              Color mixedColor = ColorWithInterpolatedColors(light->color, color2, fast_rand(101), fast_rand(101));
+              light->transitionToColor(mixedColor, 0.24);
             } else {
-              _lights[i]->color = kBlackColor;
+              light->color = color2;
+              // after setting the color, do a fade to this same color to keep the light "busy" for a short time.
+              light->transitionToColor(color2, 0.1);
             }
           }
         }
-        break;
       }
-#endif
-      
-      case ModeParity:
-        if (!_lights[0]->isTransitioning()) {
-          const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
-          Color colors[parityCount];
-          for (int i = 0; i < parityCount; ++i) {
-            Color sourceColor = _lights[i]->color;
-            Color targetColor;
-            do {
-              targetColor = NamedRainbow.randomColor();
-            } while (ColorTransitionWillProduceWhite(sourceColor, targetColor));
-            colors[i] = targetColor;
-          }
-          for (unsigned int i = 0; i < _lightCount; ++i) {
-            int parity = i % parityCount;
-            _lights[i]->transitionToColor(colors[parity], 2);
+      break;
+    }
+    
+    case ModeLightningBugs: {
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        Light *light = _lights[i];
+        if (!light->isTransitioning()) {
+          switch (light->modeState) {
+            case 1:
+              // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
+              light->transitionToColor(kBlackColor, 0.2);
+              light->modeState = 2;
+              break;
+            case 2:
+              light->transitionToColor(kNightColor, 0.1);
+              light->modeState = 0;
+              break;
+            default:
+              if (fast_rand(10000) == 0) {
+                // Blinky blinky
+                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.1);
+                light->modeState = 1;
+              }
+              break;
           }
         }
-        break;
-     
-      case ModeBoomResponder:
-        for (unsigned int i = 0; i < _lightCount; ++i) {
-          if (!_lights[i]->isTransitioning()) {
-            _lights[i]->transitionToColor(NamedRainbow.randomColor(), 10);
-          }
-        }
-        break;
+      }
+      break;
+    }
+    
+    case ModeBounce: {
+      static int direction = 1;
+      _lights[(int)_followLeader]->transitionToColor(kBlackColor, 0.4);
+      _followLeader = _followLeader + direction;
+      _lights[(int)_followLeader]->color = RGBRainbow.randomColor();
+      if (_followLeader == _lightCount - 1  || _followLeader == 0) {
+        direction = -direction;
+      }
+      break;
+    }
+    
+    case ModeWaves:
+    case ModeOneBigWave: {
+      const unsigned int waveLength = (_mode == ModeWaves ? 15 : _lightCount);
+      // Needs to fade out over less than half a wave, so there are some off in the middle.
+      const float fadeDuration = (waveLength / 2.0 - 4) / (_followSpeed * _globalSpeed);
       
-      case ModeAccumulator: {
+      Color waveColor = _colorMaker->getColor(0);
+      for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
+        unsigned int turnOnLeaderIndex = ((int)_followLeader + i * waveLength) % _lightCount;
+        unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
+        _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
+        _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration, LightTransitionEaseOut);
+      }
+      break;
+    }
+    
+    case ModeRainbow: {
+      const unsigned int waveLength = 7;
+      const float fadeDuration = (waveLength - 2) / (_followSpeed * _globalSpeed);
+      
+      for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
+        unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
+        Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
+        _lights[changeIndex]->transitionToColor(waveColor, fadeDuration , LightTransitionEaseIn);
+      }
+      break;
+    }
+    
 #if ARDUINO_DUE
-        const int kernelWidth = 3;
-#else
-        const int kernelWidth = 1;
-#endif
-       
-        static unsigned long long lastPing = 0;
-       
-        unsigned long mils = millis();
-        const  unsigned int pingRate = 20000 / _lightCount;
-        if (mils - lastPing > pingRate) {
-          unsigned int ping = fast_rand(_lightCount);
-          Color c = NamedRainbow.randomColor();
-          
-          _lights[(ping + _lightCount - 1) % _lightCount]->transitionToColor(c, 30);
-          _lights[ping]->transitionToColor(c, 30);
-          _lights[(ping + 1) % _lightCount]->transitionToColor(c, 15);
-         
-          lastPing = mils;
-        }
-       
-        for (unsigned int i = 0; i < _lightCount; ++i) {
-          _colorScratch[i] = _lights[i]->color;
+    case ModeInterferingWaves: {
+      const int waveLength = 18;
+      const float halfWave = waveLength / 2;
+      
+      // For the first 3 seconds of interfering waves, fade from previous mode
+      static const int kFadeTime = 3000;
+      unsigned long modeTime = millis() - _modeStart;
+      bool inModeTransition = modeTime < kFadeTime;
+      
+      memset(_colorScratch, 0, _lightCount * sizeof(Color));
+      
+      float lightsChunk = _lightCount / (float)kInterferringWavesNum;
+      for (int waveIndex = 0; waveIndex < kInterferringWavesNum; ++waveIndex) {
+        if (waveIndex < kInterferringWavesNum / 2.0) { // Half the colors going in each direction
+          _leaders[waveIndex] = _followLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
+        } else {
+          int normalizedWavedIndex = waveIndex - kInterferringWavesNum / 2.0;
+          _leaders[waveIndex] = _lightCount - (_followLeader + 2 * normalizedWavedIndex * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
         }
         
+        Color waveColor = _colorMaker->getColor(waveIndex);
+        
+        for (int w = -halfWave; w < halfWave; ++w) {
+          int lightIndex = (int)(_leaders[waveIndex] + w + _lightCount) % _lightCount;
+          float distance = MOD_DISTANCE(lightIndex, _leaders[waveIndex], _lightCount);
+          if (distance < halfWave) {
+            
+            Color existingColor = _colorScratch[lightIndex];
+            
+            float litRatio = (existingColor.red + existingColor.green + existingColor.blue) / (float)(3 * 255);
+            // If the existing light is less than 3% lit, use the whole new color. Otherwise smoothly fade into splitting the difference.
+            float additionalFade = (litRatio < 0.03 ? 50 : (litRatio > 0.1 ? 0 : (50 - 50 * litRatio / 0.1)));
+            
+//              logf("Existing color = (%i, %i, %i), litRation = %f, additionalFade = %f", existingColor.red, existingColor.green, existingColor.blue, litRatio, additionalFade);
+            
+            Color color = ColorWithInterpolatedColors(existingColor, waveColor,
+                                                     ((1 - distance / halfWave) * (50 + additionalFade)),
+                                                     100);
+            _colorScratch[lightIndex] = color;
+            
+            float red = color.red, green = color.green, blue = color.blue;
+            red /= 255;
+            red *= red;
+            red *= 255;
+            
+            green /= 255;
+            green *= green;
+            green *= 255;
+            
+            blue /= 255;
+            blue *= blue;
+            blue *= 255;
+            
+            color.red = red, color.blue = blue, color.green = green;
+            
+            if (inModeTransition) {
+              // Fade from previous mode
+              color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 100, 100);
+            }
+            
+            _lights[lightIndex]->color = color;
+          }
+        }
+      }
+      // Black out all other lights
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        if (ColorIsEqualToColor(_colorScratch[i], kBlackColor)) {
+          if (inModeTransition) {
+            _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, (float)modeTime / kFadeTime * 100, 100);
+          } else {
+            _lights[i]->color = kBlackColor;
+          }
+        }
+      }
+      break;
+    }
+#endif
+    
+    case ModeParity: {
+      const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
+      Color colors[parityCount];
+      for (int i = 0; i < parityCount; ++i) {
+        Color sourceColor = _lights[i]->color;
+        Color targetColor;
+        do {
+          targetColor = NamedRainbow.randomColor();
+        } while (ColorTransitionWillProduceWhite(sourceColor, targetColor));
+        colors[i] = targetColor;
+      }
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        if (!_lights[i]->isTransitioning()) {
+          int parity = i % parityCount;
+          _lights[i]->transitionToColor(colors[parity], 2);
+        }
+      }
+      break;
+    }
+    
+    case ModeBoomResponder:
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        if (!_lights[i]->isTransitioning()) {
+          _lights[i]->transitionToColor(NamedRainbow.randomColor(), 1);
+        }
+      }
+      break;
+    
+    case ModeAccumulator: {
+      const int kernelWidth = 1;
+     
+      const  unsigned int pingRate = 20000 / _lightCount;
+      if (time - _timeMarker > pingRate) {
+        unsigned int ping = fast_rand(_lightCount);
+        Color c = NamedRainbow.randomColor();
+
+        for (int i = (ping - 1); i < ping + 1; ++i) {
+          unsigned int light = (i + _lightCount) % _lightCount;
+          _lights[light]->transitionToColor(c, 0.25, LightTransitionEaseOut);
+        }
+        
+        _timeMarker = time;
+      }
+     
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        _colorScratch[i] = _lights[i]->color;
+      }
+
+      static unsigned long lastBlur = 0;
+      if (time - lastBlur > 80) {
         for (unsigned int target = 0; target < _lightCount; ++target) {
           if (_lights[target]->isTransitioning()) {
             continue;
@@ -719,122 +684,99 @@ void Scene::tick()
           c.green *= 0.90;
           c.blue *= 0.90;
          
-          _lights[target]->transitionToColor(c, 15);
+          _lights[target]->transitionToColor(c, 0.15);
         }
-        break;
+        lastBlur = time;
       }
-      case ModeTwinkle: {
-        static Color TwinkleRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor, kVioletColor, kBlackColor, kBlackColor};
-        bool anyTransitionHappening = false;
-        for (unsigned i = 0; i < _lightCount; ++i) {
-          if (_lights[i]->isTransitioning()) {
-            anyTransitionHappening = true;
-            break;
-          }
-        }
-        if (!anyTransitionHappening) {
-          static int parity = 5;
-          static int lastSegmentChanged = -1;
-          for (int twice = 0; twice < 2; ++twice) {
-            int changeSegment;
-            do {
-              changeSegment = fast_rand(parity);
-            } while (changeSegment == lastSegmentChanged);
-            lastSegmentChanged = changeSegment;
-            
-            Color startColor = _lights[changeSegment]->color;
-            Color targetColor;
-            
-            // Black is a possible target, so make sure we don't transition to a completely black strand
-            bool acceptableColor = false;
-            do {
-              targetColor = TwinkleRainbow[fast_rand(ARRAY_SIZE(TwinkleRainbow))];
-              
-              if (ColorIsEqualToColor(startColor, targetColor)) {
-                // Actually change the color
-                continue;
-              }
-              if (ColorTransitionWillProduceWhite(startColor, targetColor)) {
-                // Don't fade through white
-                continue;
-              }
-              
-              bool targetIsBlackColor = ColorIsEqualToColor(targetColor, kBlackColor);
-              if (targetIsBlackColor) {
-                bool transitioningToAllBlack = true;
-                for (int seg = 0; seg < parity; ++seg) {
-                  Color segColor = (_lights[seg]->isTransitioning() ? _lights[seg]->targetColor : _lights[seg]->color);
-                  if (seg != changeSegment && !ColorIsEqualToColor(segColor, kBlackColor)) {
-                    transitioningToAllBlack = false;
-                    break;
-                  }
-                }
-                if (transitioningToAllBlack) {
-                  // who turned out the lights?
-                  continue;
-                }
-              }
-              acceptableColor = true;
-            } while (!acceptableColor);
-            
-            for (unsigned i = changeSegment; i < _lightCount; i += parity) {
-              _lights[i]->transitionToColor(targetColor, 6);
-            }
-          }
-        }
-        break;
-      }
-      
-      default: // Turn all off
-        applyAll(kBlackColor);
-        break;
+      break;
     }
-    _lastFrame = time;
-  }
-
-  _followLeader += (_directionIsReversed ? -1 : 1);
-  _followLeader = fmodf(_followLeader + _lightCount, _lightCount);
-
-  
-  // Fade transitions
-  float transitionMultiplier = (tickTime / ((float)frameDuration * _frameDurationMultiplier));
-  for (unsigned int i = 0; i < _lightCount; ++i) {
-    _lights[i]->transitionTick(transitionMultiplier);
-  }
-  
-  if (kHasDeveloperBoard && digitalRead(TCL_SWITCH1) == HIGH) {
-    // Sound causes color changes
-    // FIXME: This doesn't work. Automatic colors only controls the start of the transition.
-//    for (int i = 0; i < _automaticColorsCount; ++i) {
-//      _automaticColorsProgress[i] = 1;
-//      _automaticColors[i] = NamedRainbow.randomColor();
-//    }
-  } else {
-    // Automatic colors
-    _colorMaker->tick();
+    case ModeTwinkle: {
+      static Color TwinkleRainbow[] = {kRedColor, kOrangeColor, kYellowColor, kGreenColor, kCyanColor, kBlueColor, kMagentaColor, kVioletColor, kBlackColor, kBlackColor};
+      bool anyTransitionHappening = false;
+      for (unsigned i = 0; i < _lightCount; ++i) {
+        if (_lights[i]->isTransitioning()) {
+          anyTransitionHappening = true;
+          break;
+        }
+      }
+      if (!anyTransitionHappening) {
+        static int parity = 5;
+        static int lastSegmentChanged = -1;
+        for (int twice = 0; twice < 2; ++twice) {
+          int changeSegment;
+          do {
+            changeSegment = fast_rand(parity);
+          } while (changeSegment == lastSegmentChanged);
+          lastSegmentChanged = changeSegment;
+          
+          Color startColor = _lights[changeSegment]->color;
+          Color targetColor;
+          
+          // Black is a possible target, so make sure we don't transition to a completely black strand
+          bool acceptableColor = false;
+          do {
+            targetColor = TwinkleRainbow[fast_rand(ARRAY_SIZE(TwinkleRainbow))];
+            
+            if (ColorIsEqualToColor(startColor, targetColor)) {
+              // Actually change the color
+              continue;
+            }
+            if (ColorTransitionWillProduceWhite(startColor, targetColor)) {
+              // Don't fade through white
+              continue;
+            }
+            
+            bool targetIsBlackColor = ColorIsEqualToColor(targetColor, kBlackColor);
+            if (targetIsBlackColor) {
+              bool transitioningToAllBlack = true;
+              for (int seg = 0; seg < parity; ++seg) {
+                Color segColor = (_lights[seg]->isTransitioning() ? _lights[seg]->targetColor : _lights[seg]->color);
+                if (seg != changeSegment && !ColorIsEqualToColor(segColor, kBlackColor)) {
+                  transitioningToAllBlack = false;
+                  break;
+                }
+              }
+              if (transitioningToAllBlack) {
+                // who turned out the lights?
+                continue;
+              }
+            }
+            acceptableColor = true;
+          } while (!acceptableColor);
+          
+          for (unsigned i = changeSegment; i < _lightCount; i += parity) {
+            _lights[i]->transitionToColor(targetColor, 0.1);
+          }
+        }
+      }
+      break;
+    }
+    
+    default: // Turn all off
+      applyAll(kBlackColor);
+      break;
   }
   
   updateStrand();
-  _lastTick = time;
   
 #ifndef TEST_MODE
-  if (time - _modeStart > (unsigned long long)TRANSITION_TIME * 1000) {
+  if (time - _modeStart > (unsigned long long)MODE_TIME * 1000) {
     Mode nextMode = randomMode();
     logf("Timed mode change to %i", (int)nextMode);
+    _modeStart = time; // in case mode doesn't actually change here.
     setMode(nextMode);
   } else {
 #endif
-    float newFrameDuration = (kHasDeveloperBoard ? PotentiometerReadf(SPEED_DIAL, 10, kMaxFrameDuration - 1) : FRAME_DURATION);
-    if (abs(newFrameDuration - frameDurationFloat) > 7) {
-      logf("New frame duration = %f", newFrameDuration);
-      frameDuration = newFrameDuration;
-      frameDurationFloat = newFrameDuration;
+    float newGlobalSpeed = (kHasDeveloperBoard ? PotentiometerReadf(SPEED_DIAL, kSpeedMin, kSpeedMax) : 1.0);
+    if (abs(newGlobalSpeed - _globalSpeed) > 0.06) {
+      logf("New global speed = %f", newGlobalSpeed);
+      _globalSpeed = newGlobalSpeed;
 #ifndef TEST_MODE
-      // Switch out of modes that are too slow or fast for the new frameDuration
-      DelayRange range = rangeForMode(_mode);
-      if (newFrameDuration < range.low || newFrameDuration > range.high) {
+      // Switch out of modes that are too slow or fast for the new global speed
+      SpeedRange range = speedRangeForMode(_mode);
+      if (_globalSpeed < range.low || _globalSpeed > range.high) {
         Mode newMode = randomMode();
-        logf("Switching out of mode %i due to frame duration. New mode = %i", (int)_mode, (int)newMode);
+        logf("Switching out of mode %i due to speed. New mode = %i", (int)_mode, (int)newMode);
         setMode(newMode);
       }
 #ifndef TEST_MODE
