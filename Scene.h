@@ -69,11 +69,9 @@ private:
   
   // Mode specific options
   float _frameDurationMultiplier;
-  int _automaticColorsCount=0;
   
   // Mode specific data
-  int _followLeader=0;
-  float _smoothLeader=0;
+  float _followLeader=0;
   Color _followColor;
   unsigned int _followColorIndex=0;
   Color *_colorScratch=NULL;
@@ -357,6 +355,8 @@ void Scene::setMode(Mode mode)
     for (unsigned int i = 0; i < _lightCount; ++i) {
       _lights[i]->modeState = 0;
     }
+
+    _followLeader = fast_rand(_lightCount);
     
     switch (_mode) {
       case ModeBounce:
@@ -373,7 +373,7 @@ void Scene::setMode(Mode mode)
 #if ARDUINO_DUE
       case ModeInterferingWaves:
         _frameDurationMultiplier = 1 / 30.; // Interferring waves doesn't use light transitions fades, needs every tick to fade.
-        _followLeader = _smoothLeader = 0;
+        
         automaticColorsCount = _lightCount / (float)kInterferringWavesNum;
         _sceneVariation = (float *)malloc(automaticColorsCount * sizeof(float));
         _leaders = (float *)malloc(automaticColorsCount * sizeof(float));
@@ -386,7 +386,6 @@ void Scene::setMode(Mode mode)
 #endif
       case ModeWaves:
       case ModeOneBigWave: {
-        _followLeader = 0;
         _targetColor = RGBRainbow.randomColor();
         _frameDurationMultiplier = 2;
         automaticColorsCount = 1;
@@ -394,7 +393,6 @@ void Scene::setMode(Mode mode)
         break;
       case ModeRainbow:
         _frameDurationMultiplier = 1;
-        _followLeader = 0;
         _followColorIndex = fast_rand(ROYGBIVRainbow.count);
         break;
       case ModeAccumulator:
@@ -461,18 +459,6 @@ void Scene::tick()
   
   if (frameTime > frameDuration * _frameDurationMultiplier) {
     switch (_mode) {
-      case ModeFollow: {
-        Color c = RGBRainbow.getColor(_followColorIndex);
-        _lights[_followLeader]->transitionToColor(c, 3);
-        
-        _followLeader += (_directionIsReversed ? -1 : 1);
-        if (_followLeader < 0 || _followLeader >= _lightCount) {
-          _followLeader = (_followLeader + _lightCount) % _lightCount;
-          _followColorIndex = (_followColorIndex + 1) % RGBRainbow.count;
-        }
-        break;
-      }
-      
       case ModeFire:
       case ModeBlueFire:
       case ModePinkFire: {
@@ -540,9 +526,9 @@ void Scene::tick()
       
       case ModeBounce: {
         static int direction = 1;
-        _lights[_followLeader]->transitionToColor(kBlackColor, 10);
+        _lights[(int)_followLeader]->transitionToColor(kBlackColor, 10);
         _followLeader = _followLeader + direction;
-        _lights[_followLeader]->color = RGBRainbow.randomColor();
+        _lights[(int)_followLeader]->color = RGBRainbow.randomColor();
         if (_followLeader == _lightCount - 1  || _followLeader == 0) {
           direction = -direction;
         }
@@ -557,13 +543,11 @@ void Scene::tick()
         
         Color waveColor = _colorMaker->getColor(0);
         for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
-          unsigned int turnOnLeaderIndex = (_followLeader + i * waveLength) % _lightCount;
-          unsigned int turnOffLeaderIndex = (_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
+          unsigned int turnOnLeaderIndex = ((int)_followLeader + i * waveLength) % _lightCount;
+          unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
           _lights[turnOnLeaderIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
           _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, transitionRate, LightTransitionEaseOut);
         }
-        _followLeader += (_directionIsReversed ? -1 : 1);
-        _followLeader = (_followLeader + _lightCount) % _lightCount;
         break;
       }
       
@@ -572,12 +556,10 @@ void Scene::tick()
         const float transitionRate = 120 / waveLength;
         
         for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
-          unsigned int changeIndex = (_followLeader + i * waveLength) % _lightCount;
+          unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
           Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
           _lights[changeIndex]->transitionToColor(waveColor, transitionRate, LightTransitionEaseIn);
         }
-        _followLeader += (_directionIsReversed ? -1 : 1);
-        _followLeader = (_followLeader + _lightCount) % _lightCount;
         break;
       }
       
@@ -596,10 +578,10 @@ void Scene::tick()
         float lightsChunk = _lightCount / (float)kInterferringWavesNum;
         for (int waveIndex = 0; waveIndex < kInterferringWavesNum; ++waveIndex) {
           if (waveIndex < kInterferringWavesNum / 2.0) { // Half the colors going in each direction
-            _leaders[waveIndex] = _smoothLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
+            _leaders[waveIndex] = _followLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
           } else {
             int normalizedWavedIndex = waveIndex - kInterferringWavesNum / 2.0;
-            _leaders[waveIndex] = _lightCount - (_smoothLeader + 2 * normalizedWavedIndex * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
+            _leaders[waveIndex] = _lightCount - (_followLeader + 2 * normalizedWavedIndex * lightsChunk + lightsChunk) + _sceneVariation[waveIndex];
           }
           
           Color waveColor = _colorMaker->getColor(waveIndex);
@@ -656,7 +638,6 @@ void Scene::tick()
             }
           }
         }
-        _smoothLeader = fmod(_smoothLeader + (15. / frameDuration), _lightCount);
         break;
       }
 #endif
@@ -810,6 +791,10 @@ void Scene::tick()
     }
     _lastFrame = time;
   }
+
+  _followLeader += (_directionIsReversed ? -1 : 1);
+  _followLeader = fmodf(_followLeader + _lightCount, _lightCount);
+
   
   // Fade transitions
   float transitionMultiplier = (tickTime / ((float)frameDuration * _frameDurationMultiplier));
