@@ -20,11 +20,11 @@
 #define TEENSY_PIN 12
 
 /* Logging */
-#define SERIAL_LOGGING 0
+#define SERIAL_LOGGING 1
 #define DEBUG 0
 
 /* Options */
-//#define TEST_MODE (ModeLightningBugs)
+#define TEST_MODE (ModeAccumulator)
 #define MODE_TIME (80)
 #define DEFAULT_BRIGHNESS 1.0
 

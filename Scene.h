@@ -39,7 +39,7 @@ static struct SpeedRange SpeedRangeMake(float low, float high)
   return r;
 }
 
-static const float kSpeedMax = 2.0;
+static const float kSpeedMax = 4.0;
 static const float kSpeedNormalMin = 0.5;
 static const float kSpeedMin = 0.4;
 static const SpeedRange kSpeedNormalRange = SpeedRangeMake(kSpeedNormalMin, kSpeedMax);
@@ -123,6 +123,32 @@ float getBrightness()
   return brightnessAdjustment;
 }
 
+Color _adjustColorForScene(Color c, float soundMultiplier, float brightness)
+{
+  float red = c.red, green = c.green, blue = c.blue;
+  
+  if (soundMultiplier != 1.0) {
+    red *= soundMultiplier;
+    green *= soundMultiplier;
+    blue *= soundMultiplier;
+  }
+  
+  if (brightness < 0.95) {
+    red *= brightness;
+    green *= brightness;
+    blue *= brightness;
+  }
+  red = min(red, 255);
+  green = min(green, 255);
+  blue = min(blue, 255);
+
+  c.red = red;
+  c.green = green;
+  c.blue = blue;
+
+  return c;
+}
+
 void Scene::updateStrand()
 {
   float brightnessAdjustment = getBrightness();
@@ -155,26 +181,26 @@ void Scene::updateStrand()
     Light *light = _lights[i];
     float red = light->color.red, green = light->color.green, blue = light->color.blue;
     
-    if (useSound) {
-      red *= soundMultiplier;
-      green *= soundMultiplier;
-      blue *= soundMultiplier;
-    }
+    Color color = _adjustColorForScene(light->color, soundMultiplier, brightnessAdjustment);
+    Color targetColor = _adjustColorForScene(light->targetColor, soundMultiplier, brightnessAdjustment);
+    Color sourceColor = _adjustColorForScene(light->originalColor, soundMultiplier, brightnessAdjustment);
     
-    if (brightnessAdjustment < 0.95) {
-      red *= brightnessAdjustment;
-      green *= brightnessAdjustment;
-      blue *= brightnessAdjustment;
-    }
-    red = min(red, 255);
-    green = min(green, 255);
-    blue = min(blue, 255);
+    // FIXME: comment this
+    // Nevermind, this is just a lame excuse for actual low-brightness dithering by clipping off low values if the source or target color has the same number of lit subpixels.
     
-    if (red + green + blue < 5) {
-      // Avoid fades like yellow -> black showing (1,0,0) == red right at the end of the fadeout
+    if (light->isTransitioning()) {
+      unsigned int numZeroComponents = (color.red == 0 ? 1 : 0)  + (color.green == 0 ? 1 : 0) + (color.blue == 0 ? 1 : 0);
+      unsigned int targetNumZeroComponents = (targetColor.red == 0 ? 1 : 0)  + (targetColor.green == 0 ? 1 : 0) + (targetColor.blue == 0 ? 1 : 0);
+      unsigned int sourceNumZeroComponents = (sourceColor.red == 0 ? 1 : 0)  + (sourceColor.green == 0 ? 1 : 0) + (sourceColor.blue == 0 ? 1 : 0);
+      
+      if (red + green + blue < 10  && (numZeroComponents == 1 || numZeroComponents == 2) && numZeroComponents != targetNumZeroComponents && numZeroComponents != sourceNumZeroComponents) {
+        // Avoid fades like reddish-yellow -> black showing (1,0,0) == red right at the end of the fadeout
+        red = green = blue = 0;
+      }
+    } else if (red + green + blue < 5) {
       red = green = blue = 0;
     }
-    
+      
 #if ARDUINO_TCL
     TCL.sendColor(red, green, blue);
 #elif MEGA_WS2811
@@ -327,7 +353,7 @@ void Scene::setMode(Mode mode)
     _soundPeak = 0;
     
     int automaticColorsCount = 0;
-    float automaticColorsDuration = 2.0;
+    float automaticColorsDuration = 3.0;
     
     free(_colorScratch);
     _colorScratch = NULL;
@@ -392,7 +418,7 @@ void Scene::setMode(Mode mode)
 void Scene::tick()
 {
   unsigned long long time = millis();
-  unsigned long long tickTime = (time - _lastTick) * _globalSpeed;
+  unsigned long long tickTime = MAX(1, (time - _lastTick) * _globalSpeed);
   _lastTick = time;
 
   // Fade transitions
@@ -401,15 +427,19 @@ void Scene::tick()
   }
   
   static bool allOff = false;
+  static bool startedOffFade = false;
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
-    if (!allOff) {
+    if (!startedOffFade) {
       for (unsigned int i = 0; i < _lightCount; ++i) {
         _lights[i]->transitionToColor(kBlackColor, 1, LightTransitionEaseOut);
       }
-      allOff = true;
+      startedOffFade = true;
     }
-    if (_lights[0]->isTransitioning()) {
+    if (!allOff) {
       updateStrand();
+      if (!_lights[0]->isTransitioning()) {
+        allOff = true;
+      }
     } else {
       // Just sleep after we're done fading
       delay(100);
@@ -417,6 +447,7 @@ void Scene::tick()
     return;
   } else {
     allOff = false;
+    startedOffFade = false;
   }
   
   _followLeader += (_directionIsReversed ? -1 : 1) * (_followSpeed * tickTime / 1000.0);
@@ -472,7 +503,7 @@ void Scene::tick()
           switch (light->modeState) {
             case 1:
               // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-              light->transitionToColor(kBlackColor, 0.2);
+              light->transitionToColor(kBlackColor, 0.1);
               light->modeState = 2;
               break;
             case 2:
@@ -482,7 +513,7 @@ void Scene::tick()
             default:
               if (fast_rand(10000) == 0) {
                 // Blinky blinky
-                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.1);
+                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.15);
                 light->modeState = 1;
               }
               break;
@@ -505,16 +536,23 @@ void Scene::tick()
     
     case ModeWaves:
     case ModeOneBigWave: {
-      const unsigned int waveLength = (_mode == ModeWaves ? 15 : _lightCount);
+      const unsigned int waveLength = (_mode == ModeWaves ? 20 : _lightCount);
       // Needs to fade out over less than half a wave, so there are some off in the middle.
       const float fadeDuration = (waveLength / 2.0 - 4) / (_followSpeed * _globalSpeed);
       
       Color waveColor = _colorMaker->getColor(0);
-      for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
+      
+      unsigned int waveCount = _lightCount / waveLength;
+      for (unsigned int i = 0; i < waveCount; ++i) {
         unsigned int turnOnLeaderIndex = ((int)_followLeader + i * waveLength) % _lightCount;
         unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
-        _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
-        _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration, LightTransitionEaseOut);
+
+        if (!_lights[turnOnLeaderIndex]->isTransitioning()) {
+          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
+        }
+        if (!_lights[turnOffLeaderIndex]->isTransitioning()) {
+          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration, LightTransitionEaseOut);
+        }
       }
       break;
     }
@@ -526,7 +564,9 @@ void Scene::tick()
       for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
         unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
         Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
-        _lights[changeIndex]->transitionToColor(waveColor, fadeDuration , LightTransitionEaseIn);
+        if (!_lights[changeIndex]->isTransitioning()) {
+          _lights[changeIndex]->transitionToColor(waveColor, fadeDuration , LightTransitionEaseIn);
+        }
       }
       break;
     }
@@ -611,6 +651,8 @@ void Scene::tick()
 #endif
     
     case ModeParity: {
+      // FIXME: accidentally changed the behavior of this when I stopped checking _lights[0]
+      
       const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
       Color colors[parityCount];
       for (int i = 0; i < parityCount; ++i) {
@@ -641,25 +683,34 @@ void Scene::tick()
     case ModeAccumulator: {
       const int kernelWidth = 1;
      
-      const  unsigned int pingRate = 20000 / _lightCount;
-      if (time - _timeMarker > pingRate) {
+      const unsigned int kPingRate = 20000 / _lightCount;
+      const unsigned int kBlurRate = 40; // ms
+      if (time - _timeMarker > kPingRate) {
         unsigned int ping = fast_rand(_lightCount);
         Color c = NamedRainbow.randomColor();
 
-        for (int i = (ping - 1); i < ping + 1; ++i) {
+        for (int i = (ping - 1); i <= ping + 1; ++i) {
           unsigned int light = (i + _lightCount) % _lightCount;
           _lights[light]->transitionToColor(c, 0.25, LightTransitionEaseOut);
         }
         
         _timeMarker = time;
       }
-     
-      for (unsigned int i = 0; i < _lightCount; ++i) {
-        _colorScratch[i] = _lights[i]->color;
-      }
-
+      
       static unsigned long lastBlur = 0;
-      if (time - lastBlur > 80) {
+      
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        Color c = _lights[i]->color;
+        if (!_lights[i]->isTransitioning()) {
+          // Fade down in the color scratch
+          c.red *= 0.99;
+          c.green *= 0.99;
+          c.blue *= 0.99;
+        }
+        _colorScratch[i] = c;
+      }
+      
+      if (time - lastBlur > kBlurRate) {  
         for (unsigned int target = 0; target < _lightCount; ++target) {
           if (_lights[target]->isTransitioning()) {
             continue;
@@ -679,14 +730,14 @@ void Scene::tick()
             c.blue = (c.blue * count + sourceColor.blue) / (float)(count + 1);
             ++count;
           }
-          // And fade out
-          c.red *= 0.90;
-          c.green *= 0.90;
-          c.blue *= 0.90;
-         
-          _lights[target]->transitionToColor(c, 0.15);
+          _lights[target]->color = c;
+//          _lights[target]->transitionToColor(c, 0.20);
         }
         lastBlur = time;
+      } else {
+        for (unsigned int target = 0; target < _lightCount; ++target) {
+          _lights[target]->color = _colorScratch[target];
+        }
       }
       break;
     }
