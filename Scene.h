@@ -46,7 +46,7 @@ static const SpeedRange kSpeedNormalRange = SpeedRangeMake(kSpeedNormalMin, kSpe
 
 static SpeedRange kModeRanges[ModeCount] = {0};
 
-static const unsigned int kInterferringWavesNum = 5;
+static const unsigned int kInterferringWavesNum = LED_COUNT / 20;
 
 #pragma mark - 
 

@@ -20,7 +20,7 @@
 // -----------------------------------------
 //
 #include <Wire.h>
-static const unsigned int LED_COUNT = 100;
+static const unsigned int LED_COUNT = 300;
 
 #include <SPI.h>
 #include <TCL.h>
