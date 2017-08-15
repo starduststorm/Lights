@@ -39,7 +39,7 @@ static struct SpeedRange SpeedRangeMake(float low, float high)
   return r;
 }
 
-static const float kSpeedMax = 4.0;
+static const float kSpeedMax = 3.0;
 static const float kSpeedNormalMin = 0.5;
 static const float kSpeedMin = 0.4;
 static const SpeedRange kSpeedNormalRange = SpeedRangeMake(kSpeedNormalMin, kSpeedMax);
@@ -497,23 +497,25 @@ void Scene::tick()
     }
     
     case ModeLightningBugs: {
+      // cycle the lightning bugs density over two minutes
+      unsigned int chance = 2500 + 1500 * (sin(3.14159 * time / 1000 / 120) - 0.2);
       for (unsigned int i = 0; i < _lightCount; ++i) {
         Light *light = _lights[i];
         if (!light->isTransitioning()) {
           switch (light->modeState) {
             case 1:
               // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-              light->transitionToColor(kBlackColor, 0.1);
+              light->transitionToColor(kBlackColor, 0.22, LightTransitionEaseOut);
               light->modeState = 2;
               break;
             case 2:
-              light->transitionToColor(kNightColor, 0.1);
+              light->transitionToColor(kNightColor, 0.15);
               light->modeState = 0;
               break;
             default:
-              if (fast_rand(10000) == 0) {
+              if (fast_rand(chance) == 0) {
                 // Blinky blinky
-                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.15);
+                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.1);
                 light->modeState = 1;
               }
               break;
@@ -682,10 +684,10 @@ void Scene::tick()
     
     case ModeAccumulator: {
       const int kernelWidth = 1;
-     
-      const unsigned int kPingRate = 20000 / _lightCount;
-      const unsigned int kBlurRate = 40; // ms
-      if (time - _timeMarker > kPingRate) {
+      
+      const unsigned int kPingInterval = 30000 / _lightCount / _globalSpeed;
+      const unsigned int kBlurInterval = 200 / _globalSpeed;
+      if (time - _timeMarker > kPingInterval) {
         unsigned int ping = fast_rand(_lightCount);
         Color c = NamedRainbow.randomColor();
 
@@ -701,37 +703,40 @@ void Scene::tick()
       
       for (unsigned int i = 0; i < _lightCount; ++i) {
         Color c = _lights[i]->color;
-        if (!_lights[i]->isTransitioning()) {
-          // Fade down in the color scratch
-          c.red *= 0.99;
-          c.green *= 0.99;
-          c.blue *= 0.99;
-        }
         _colorScratch[i] = c;
       }
       
-      if (time - lastBlur > kBlurRate) {  
+      if (time - lastBlur > kBlurInterval) {  
         for (unsigned int target = 0; target < _lightCount; ++target) {
           if (_lights[target]->isTransitioning()) {
             continue;
           }
-          // Box blur each light from a kernel on both sides
           Color c = kBlackColor;
           unsigned int count = 0;
-          Color sourceColor;
+          
+          float multiplier = 1.0;
+          
           for (int k = -kernelWidth; k <= kernelWidth; ++k) {
             unsigned int source = (target + k + _lightCount) % _lightCount;
-            sourceColor = _colorScratch[source];
+            Color sourceColor = _colorScratch[source];
+            
             if (sourceColor.red + sourceColor.green + sourceColor.blue < 20) {
-              continue;
+              // this helps dampen the color as it spread out, compared to a real repeated blur which disappears very quickly
+              multiplier = 0.9;
+            } else {
+              c.red = (c.red * count + sourceColor.red) / (float)(count + 1);
+              c.green = (c.green * count + sourceColor.green) / (float)(count + 1);
+              c.blue = (c.blue * count + sourceColor.blue) / (float)(count + 1);
+              ++count;
             }
-            c.red = (c.red * count + sourceColor.red) / (float)(count + 1);
-            c.green = (c.green * count + sourceColor.green) / (float)(count + 1);
-            c.blue = (c.blue * count + sourceColor.blue) / (float)(count + 1);
-            ++count;
           }
-          _lights[target]->color = c;
-//          _lights[target]->transitionToColor(c, 0.20);
+          
+          // 
+          c.red *= 0.90 * multiplier;
+          c.green *= 0.90 * multiplier;
+          c.blue *= 0.90 *multiplier;
+          
+          _lights[target]->transitionToColor(c, 0.20);
         }
         lastBlur = time;
       } else {
