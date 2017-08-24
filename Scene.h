@@ -443,6 +443,11 @@ void Scene::tick()
     } else {
       // Just sleep after we're done fading
       delay(100);
+      // And set all to black periodically for any new strands that get attached, or lose and gain power.
+      for (unsigned int i = 0; i < _lightCount; ++i) {
+        _lights[i]->color = kBlackColor;
+      }
+      updateStrand();
     }
     return;
   } else {
