@@ -21,7 +21,6 @@ typedef enum {
   // These are all either boring or need work.
   ModeTwinkle,
 
-  ModeOneBigWave,
   ModeBoomResponder,
   ModeBounce,
 } Mode;
@@ -395,10 +394,10 @@ void Scene::setMode(Mode mode)
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
 #endif
-      case ModeWaves:
-      case ModeOneBigWave: {
+      case ModeWaves: {
         automaticColorsCount = 1;
-        automaticColorsDuration = 8.0;
+        automaticColorsDuration = 6.0;
+        _sceneVariation = new float(fast_rand(3) == 0 ? 50 : 20); // wave size, assumes number of lights is roughly divisible by 50
         break;
       case ModeRainbow:
         _followColorIndex = fast_rand(ROYGBIVRainbow.count);
@@ -555,9 +554,8 @@ void Scene::tick()
       break;
     }
     
-    case ModeWaves:
-    case ModeOneBigWave: {
-      const unsigned int waveLength = (_mode == ModeWaves ? 20 : _lightCount);
+    case ModeWaves: {
+      const unsigned int waveLength = (float)*_sceneVariation;
       // Needs to fade out over less than half a wave, so there are some off in the middle.
       const float fadeDuration = (waveLength / 2.0) / (_followSpeed * _globalSpeed);
       
@@ -569,10 +567,10 @@ void Scene::tick()
         unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
 
         if (!_lights[turnOnLeaderIndex]->isTransitioning()) {
-          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration * 1.2, LightTransitionEaseIn);
+          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
         }
         if (!_lights[turnOffLeaderIndex]->isTransitioning()) {
-          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration * 0.8, LightTransitionEaseOut);
+          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration * 0.75, LightTransitionEaseOut);
         }
       }
       break;
