@@ -7,17 +7,18 @@ typedef enum {
   ModeWaves,
   ModeFire,
   ModeBlueFire,
+  ModeGreenFire,
+  ModePinkFire,
   
   ModeLightningBugs,
   ModeParity,
-#if ARDUINO_DUE
+#if ARDUINO_DUE || TEENSY
   ModeInterferingWaves,
 #endif
   ModeRainbow,
   ModeAccumulator,
   ModeCount,
   // These are all either boring or need work.
-  ModePinkFire,
   ModeTwinkle,
 
   ModeOneBigWave,
@@ -61,7 +62,7 @@ private:
   
 #if MEGA_WS2811
   WS2811Renderer *ws2811Renderer;
-#elif TEENSY_WS2812
+#elif FAST_LED
   CRGB leds[LED_COUNT];
 #endif
 
@@ -208,9 +209,13 @@ void Scene::updateStrand()
     red = min(1.1 * red, 255);
     
     ws2811Renderer->setPixel(i, red, green, blue);
-#elif TEENSY_WS2812 
+#elif FAST_LED 
+#if TEENSY_WS2812
     // RGB == GRB? *shrug*
     leds[i] = CRGB(green, red, blue);
+#else
+    leds[i] = CRGB(red, green, blue);
+#endif
 #endif
   }
 
@@ -219,7 +224,7 @@ void Scene::updateStrand()
   TCL.sendEmptyFrame();
 #elif MEGA_WS2811
   ws2811Renderer->render();
-#elif TEENSY_WS2812
+#elif FAST_LED
   FastLED.show(); 
 #endif
 }
@@ -254,6 +259,7 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0)
   setSpeedRangeForMode(SpeedRangeMake(0.7, 1.3), ModeFire);
   setSpeedRangeForMode(speedRangeForMode(ModeFire), ModeBlueFire);
   setSpeedRangeForMode(speedRangeForMode(ModeFire), ModePinkFire);
+  setSpeedRangeForMode(speedRangeForMode(ModeFire), ModeGreenFire);
   
   setSpeedRangeForMode(SpeedRangeMake(kSpeedMin, kSpeedMin + 0.2), ModeLightningBugs);
   
@@ -266,8 +272,8 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0)
   
 #if MEGA_WS2811
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
-#elif TEENSY_WS2812
-  LEDS.addLeds<WS2812, TEENSY_PIN, RGB>(leds, LED_COUNT);
+#elif FAST_LED
+  LEDS.addLeds<WS2812, FAST_LED_PIN, RGB>(leds, LED_COUNT);
   LEDS.setBrightness(100);
 #endif
   
@@ -377,7 +383,7 @@ void Scene::setMode(Mode mode)
       case ModeLightningBugs:
         transitionAll(kNightColor, 0.4);
         break;
-#if ARDUINO_DUE
+#if ARDUINO_DUE || TEENSY
       case ModeInterferingWaves:
         automaticColorsCount = _lightCount / (float)kInterferringWavesNum;
         _sceneVariation = (float *)malloc(automaticColorsCount * sizeof(float));
@@ -385,14 +391,14 @@ void Scene::setMode(Mode mode)
         for (int i = 0; i < automaticColorsCount; ++i) {
           _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 10.0;
         }
-        automaticColorsDuration = 3.0;
+        automaticColorsDuration = 5.0;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
 #endif
       case ModeWaves:
       case ModeOneBigWave: {
         automaticColorsCount = 1;
-        automaticColorsDuration = 4.0;
+        automaticColorsDuration = 8.0;
         break;
       case ModeRainbow:
         _followColorIndex = fast_rand(ROYGBIVRainbow.count);
@@ -463,18 +469,26 @@ void Scene::tick()
   switch (_mode) {
     case ModeFire:
     case ModeBlueFire:
+    case ModeGreenFire:
     case ModePinkFire: {
       // Interpolate, fade, and snap between two colors
-      Color c1, c2;
-      if (_mode == ModePinkFire) {
-        c1 = MakeColor(0xFF, 0x0, 0xB4);
-        c2 = MakeColor(0xFF, 0x0, 0xB4);
+      Color palette[3];
+      if (_mode == ModeGreenFire) {
+        palette[0] = MakeColor(0x10, 0xFF, 0x0);
+        palette[1] = MakeColor(0xA0, 0xFF, 0x0);
+        palette[2] = MakeColor(0x0B, 0x66, 0x13);
+      } else if (_mode == ModePinkFire) {
+        palette[0] = MakeColor(0xFF, 0x0, 0xFF);
+        palette[1] = MakeColor(0xBF, 0x0, 0xFF);
+        palette[2] = MakeColor(0xF8, 0x18, 0x94);
       } else if (_mode == ModeBlueFire) {
-        c1 = MakeColor(0x30, 0x10, 0xFF);
-        c2 = MakeColor(0, 0xB0, 0xFF);
+        palette[0] = MakeColor(0x30, 0x10, 0xFF);
+        palette[1] = MakeColor(0, 0xB0, 0xFF);
+        palette[2] = MakeColor(0x1, 0xC0, 0xC0);
       } else {
-        c1 = MakeColor(0xFF, 0x30, 0);
-        c2 = MakeColor(0xFF, 0x80, 0); 
+        palette[0] = MakeColor(0xFF, 0x3C, 0);
+        palette[1] = MakeColor(0xFF, 0x80, 0);
+        palette[2] = MakeColor(0xDD, 0x60, 0x02);
       }
       for (unsigned int i = 0; i < _lightCount; ++i) {
         Light *light = _lights[i];
@@ -486,14 +500,14 @@ void Scene::tick()
             light->transitionToColor(kBlackColor, 0.5);
           } else {
             // Otherwise, fade or snap to another color
-            Color color2 = (fast_rand(2) ? c1 : c2);
+            Color new_color = palette[fast_rand(sizeof(palette)/sizeof(palette[0]))];
             if (choice < 95) {
-              Color mixedColor = ColorWithInterpolatedColors(light->color, color2, fast_rand(101), fast_rand(101));
+              Color mixedColor = ColorWithInterpolatedColors(light->color, new_color, fast_rand(101), fast_rand(101));
               light->transitionToColor(mixedColor, 0.24);
             } else {
-              light->color = color2;
+              light->color = new_color;
               // after setting the color, do a fade to this same color to keep the light "busy" for a short time.
-              light->transitionToColor(color2, 0.1);
+              light->transitionToColor(new_color, 0.1);
             }
           }
         }
@@ -545,7 +559,7 @@ void Scene::tick()
     case ModeOneBigWave: {
       const unsigned int waveLength = (_mode == ModeWaves ? 20 : _lightCount);
       // Needs to fade out over less than half a wave, so there are some off in the middle.
-      const float fadeDuration = (waveLength / 2.0 - 4) / (_followSpeed * _globalSpeed);
+      const float fadeDuration = (waveLength / 2.0) / (_followSpeed * _globalSpeed);
       
       Color waveColor = _colorMaker->getColor(0);
       
@@ -555,10 +569,10 @@ void Scene::tick()
         unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
 
         if (!_lights[turnOnLeaderIndex]->isTransitioning()) {
-          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
+          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration * 1.2, LightTransitionEaseIn);
         }
         if (!_lights[turnOffLeaderIndex]->isTransitioning()) {
-          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration, LightTransitionEaseOut);
+          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration * 0.8, LightTransitionEaseOut);
         }
       }
       break;
@@ -566,19 +580,19 @@ void Scene::tick()
     
     case ModeRainbow: {
       const unsigned int waveLength = 7;
-      const float fadeDuration = (waveLength - 2) / (_followSpeed * _globalSpeed);
+      const float fadeDuration = (waveLength - 2) / (_followSpeed * _globalSpeed) * 0.9;
       
       for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
         unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
         Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
         if (!_lights[changeIndex]->isTransitioning()) {
-          _lights[changeIndex]->transitionToColor(waveColor, fadeDuration , LightTransitionEaseIn);
+          _lights[changeIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
         }
       }
       break;
     }
     
-#if ARDUINO_DUE
+#if ARDUINO_DUE || TEENSY
     case ModeInterferingWaves: {
       const int waveLength = 18;
       const float halfWave = waveLength / 2;

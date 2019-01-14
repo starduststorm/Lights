@@ -1,5 +1,5 @@
 
-#if TEENSY_WS2812
+#if FAST_LED
 #include "FastLED.h"
 #endif
 

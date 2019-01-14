@@ -17,6 +17,7 @@
 // * Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
 // * Refactor cruft in Scene.h so patterns are actually modularized.
 // * Get rid of "Twinkle." It sucks. Replace it with something good.
+// * Pattern with several follow leads traveling around in various directions and auto colors, colors are blended additively.
 // -----------------------------------------
 //
 #include <Wire.h>
