@@ -672,8 +672,10 @@ void Scene::tick()
 #endif
     
     case ModeParity: {
-      // FIXME: accidentally changed the behavior of this when I stopped checking _lights[0]
-      
+      if (_lights[0]->isTransitioning()) {
+        // serves to keep all the lights in sync
+        break;
+      }
       const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
       Color colors[parityCount];
       for (int i = 0; i < parityCount; ++i) {
@@ -685,7 +687,7 @@ void Scene::tick()
         colors[i] = targetColor;
       }
       for (unsigned int i = 0; i < _lightCount; ++i) {
-        if (!_lights[i]->isTransitioning()) {
+        if (!_lights[i]->isTransitioning()) { // serves to not interrupt existing fades when this pattern stats
           int parity = i % parityCount;
           _lights[i]->transitionToColor(colors[parity], 2);
         }
