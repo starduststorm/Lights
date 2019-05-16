@@ -6,16 +6,10 @@
 #define ARDUINO_DUE 0
 #define DEVELOPER_BOARD 0
 
-/* For Developer Board */
-#define BRIGHTNESS_DIAL TCL_POT3
-#define MODE_DIAL TCL_POT1
-#define SPEED_DIAL TCL_POT4
-//#define SOUND_DIAL TCL_POT2
-
 // Strand/cpu types
-#define MEGA_WS2811   0  // triggers use of mega-specific assembly
+#define MEGA_WS2811   1  // triggers use of mega-specific assembly
 #define ARDUINO_TCL   0  // Total Control Lighting (tm)
-#define TEENSY_WS2811 1
+#define TEENSY_WS2811 0
 #define TEENSY_WS2812 0
 
 #define FAST_LED_PIN 12
@@ -38,5 +32,12 @@ static const bool kHasDeveloperBoard = false;
 #define TEENSY        (TEENSY_WS2812 || TEENSY_WS2811)
 #define FAST_LED      (TEENSY_WS2812 || TEENSY_WS2811)
 
-#endif // CONFIG_H
+/* For Developer Board */
+#if DEVELOPER_BOARD
+#define BRIGHTNESS_DIAL TCL_POT3
+#define MODE_DIAL TCL_POT1
+#define SPEED_DIAL TCL_POT4
+//#define SOUND_DIAL TCL_POT2
+#endif
 
+#endif // CONFIG_H

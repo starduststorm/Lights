@@ -12,6 +12,7 @@ typedef enum {
   
   ModeLightningBugs,
   ModeParity,
+  ModeTwinkle,
 #if ARDUINO_DUE || TEENSY
   ModeInterferingWaves,
 #endif
@@ -19,7 +20,7 @@ typedef enum {
   ModeAccumulator,
   ModeCount,
   // These are all either boring or need work.
-  ModeTwinkle,
+  
 
   ModeBoomResponder,
   ModeBounce,
@@ -105,6 +106,7 @@ float getBrightness()
     return DEFAULT_BRIGHNESS;
   }
   static float brightnessAdjustment = 1.0;
+#if DEVELOPER_BOARD
   static int brightMin = 200;
   static int brightMax = 900;
   int val = analogRead(BRIGHTNESS_DIAL);
@@ -120,6 +122,7 @@ float getBrightness()
     brightnessAdjustment = (val - brightMin) / (float)brightMax;
     lastChangeVal = val;
   }
+#endif
   return brightnessAdjustment;
 }
 
@@ -273,7 +276,7 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0)
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
 #elif FAST_LED
   LEDS.addLeds<WS2812, FAST_LED_PIN, RGB>(leds, LED_COUNT);
-  LEDS.setBrightness(100);
+  LEDS.setBrightness(0xFF);
 #endif
   
   applyAll(kBlackColor);
@@ -408,7 +411,7 @@ void Scene::setMode(Mode mode)
       case ModeTwinkle:
         for (unsigned i = 0; i < _lightCount; ++i) {
           Color color = ROYGBIVRainbow.randomColor();
-          _lights[i]->transitionToColor(color, 0.1);
+          _lights[i]->transitionToColor(color, 1);
         }
         break;
       default: break;
@@ -433,6 +436,7 @@ void Scene::tick()
   
   static bool allOff = false;
   static bool startedOffFade = false;
+#if DEVELOPER_BOARD
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!startedOffFade) {
       for (unsigned int i = 0; i < _lightCount; ++i) {
@@ -459,6 +463,7 @@ void Scene::tick()
     allOff = false;
     startedOffFade = false;
   }
+#endif
   
   _followLeader += (_directionIsReversed ? -1 : 1) * (_followSpeed * tickTime / 1000.0);
   _followLeader = fmodf(_followLeader + _lightCount, _lightCount);
@@ -820,7 +825,7 @@ void Scene::tick()
           } while (!acceptableColor);
           
           for (unsigned i = changeSegment; i < _lightCount; i += parity) {
-            _lights[i]->transitionToColor(targetColor, 0.1);
+            _lights[i]->transitionToColor(targetColor, 1);
           }
         }
       }
@@ -842,7 +847,10 @@ void Scene::tick()
     setMode(nextMode);
   } else {
 #endif
-    float newGlobalSpeed = (kHasDeveloperBoard ? PotentiometerReadf(SPEED_DIAL, kSpeedMin, kSpeedMax) : 1.0);
+    float newGlobalSpeed = 1.0;
+#if DEVELOPER_BOARD
+    newGlobalSpeed = (kHasDeveloperBoard ? PotentiometerReadf(SPEED_DIAL, kSpeedMin, kSpeedMax) : 1.0);
+#endif
     if (abs(newGlobalSpeed - _globalSpeed) > 0.06) {
       logf("New global speed = %f", newGlobalSpeed);
       _globalSpeed = newGlobalSpeed;
@@ -862,6 +870,7 @@ void Scene::tick()
   
   // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres
   static bool button1Down = true;
+#if DEVELOPER_BOARD
   if (kHasDeveloperBoard && digitalRead(TCL_MOMENTARY1) == LOW) {
     if (!button1Down) {
       setMode((Mode)((_mode + 1) % ModeCount));
@@ -870,6 +879,5 @@ void Scene::tick()
   } else {
     button1Down = false;
   }
+#endif
 }
-
-

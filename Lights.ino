@@ -21,10 +21,12 @@
 // -----------------------------------------
 //
 #include <Wire.h>
-static const unsigned int LED_COUNT = 300;
+static const unsigned int LED_COUNT = 100;
 
 #include <SPI.h>
+#if ARDUINO_TCL
 #include <TCL.h>
+#endif
 
 #include "Config.h"
 #include "Utilities.h"
@@ -97,4 +99,3 @@ void loop()
 #endif
   gLights->tick();
 }
-
