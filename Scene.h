@@ -710,7 +710,7 @@ void Scene::tick()
       const int kernelWidth = 1;
       
       const unsigned int kPingInterval = 30000 / _lightCount / _globalSpeed;
-      const unsigned int kBlurInterval = 200 / _globalSpeed;
+      const unsigned int kBlurInterval = 50 / _globalSpeed;
       if (time - _timeMarker > kPingInterval) {
         unsigned int ping = fast_rand(_lightCount);
         Color c = NamedRainbow.randomColor();
@@ -745,8 +745,7 @@ void Scene::tick()
             Color sourceColor = _colorScratch[source];
             
             if (sourceColor.red + sourceColor.green + sourceColor.blue < 20) {
-              // this helps dampen the color as it spread out, compared to a real repeated blur which disappears very quickly
-              multiplier = 0.9;
+              continue;
             } else {
               c.red = (c.red * count + sourceColor.red) / (float)(count + 1);
               c.green = (c.green * count + sourceColor.green) / (float)(count + 1);
@@ -756,17 +755,13 @@ void Scene::tick()
           }
           
           // 
-          c.red *= 0.90 * multiplier;
-          c.green *= 0.90 * multiplier;
-          c.blue *= 0.90 *multiplier;
+          c.red *= 0.92 * multiplier;
+          c.green *= 0.92 * multiplier;
+          c.blue *= 0.92 *multiplier;
           
           _lights[target]->transitionToColor(c, 0.20);
         }
         lastBlur = time;
-      } else {
-        for (unsigned int target = 0; target < _lightCount; ++target) {
-          _lights[target]->color = _colorScratch[target];
-        }
       }
       break;
     }
