@@ -528,17 +528,17 @@ void Scene::tick()
           switch (light->modeState) {
             case 1:
               // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-              light->transitionToColor(kBlackColor, 0.22, LightTransitionEaseOut);
+              light->transitionToColor(kBlackColor, 0.6, LightTransitionEaseOut);
               light->modeState = 2;
               break;
             case 2:
-              light->transitionToColor(kNightColor, 0.15);
+              light->transitionToColor(kNightColor, 0.75);
               light->modeState = 0;
               break;
             default:
               if (fast_rand(chance) == 0) {
                 // Blinky blinky
-                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.1);
+                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.8);
                 light->modeState = 1;
               }
               break;
