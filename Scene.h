@@ -520,25 +520,26 @@ void Scene::tick()
     }
     
     case ModeLightningBugs: {
-      // cycle the lightning bugs density over two minutes
-      unsigned int chance = 2500 + 1500 * (sin(3.14159 * time / 1000 / 120) - 0.2);
+      // cycle the lightning bugs density over a minute
+      unsigned int chance = 1400 + 1000 * sin(M_PI * time / 1000 / 60);
+      logf("chance = %u", chance);
       for (unsigned int i = 0; i < _lightCount; ++i) {
         Light *light = _lights[i];
         if (!light->isTransitioning()) {
           switch (light->modeState) {
             case 1:
               // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-              light->transitionToColor(kBlackColor, 0.6, LightTransitionEaseOut);
+              light->transitionToColor(kBlackColor, 0.45, LightTransitionEaseOut);
               light->modeState = 2;
               break;
             case 2:
-              light->transitionToColor(kNightColor, 0.75);
+              light->transitionToColor(kNightColor, 0.45);
               light->modeState = 0;
               break;
             default:
               if (fast_rand(chance) == 0) {
                 // Blinky blinky
-                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.8);
+                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.35);
                 light->modeState = 1;
               }
               break;
