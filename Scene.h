@@ -383,7 +383,7 @@ void Scene::setMode(Mode mode)
     
     switch (_mode) {
       case ModeLightningBugs:
-        transitionAll(kNightColor, 0.4);
+        transitionAll(kNightColor, 1.2);
         break;
 #if ARDUINO_DUE || TEENSY
       case ModeInterferingWaves:
