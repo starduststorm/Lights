@@ -15,18 +15,17 @@
 //
 // TODOs!: 
 // * Don't use enum count for picking from the mode list. Just put all the modes in the enum, and list them out for each deployment kind so I can toggle.
-// * Refactor cruft in Scene.h so patterns are actually modularized.
+// * Refactor cruft in Scene.h so patterns are actually modularized, just subclass so they can store their own mode vars
+// * Factor our light transitions from Light.h and put them in an animation class that can handle multiple lights at a time. Goal: Interferring waves should not have to crossfade
 // * Get rid of "Twinkle." It sucks. Replace it with something good.
 // * Pattern with several follow leads traveling around in various directions and auto colors, colors are blended additively.
+// * 
 // -----------------------------------------
 //
 #include <Wire.h>
 static const unsigned int LED_COUNT = 100;
 
 #include <SPI.h>
-#if ARDUINO_TCL
-#include <TCL.h>
-#endif
 
 #include "Config.h"
 #include "Utilities.h"
@@ -34,6 +33,10 @@ static const unsigned int LED_COUNT = 100;
 #include "Light.h"
 #include "Scene.h"
 #include "WS2811.h"
+
+#if ARDUINO_TCL
+#include <TCL.h>
+#endif
 
 static Scene *gLights;
 

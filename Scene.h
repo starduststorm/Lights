@@ -2,6 +2,11 @@
 #include "WS2811.h"
 #include "Color.h"
 #include "ColorMaker.h"
+#include "Config.h"
+
+#if ARDUINO_TCL
+#include <TCL.h>
+#endif
 
 typedef enum {
   ModeWaves,
