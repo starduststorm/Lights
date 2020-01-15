@@ -47,7 +47,7 @@ void ColorMaker::prepColors(unsigned int count, float duration) // duration per 
     colorProgress = (float *)malloc(count * sizeof(float));
     colorCache = (Color *)malloc(count * sizeof(Color));
     
-    for (int i = 0; i < count; ++i) {
+    for (unsigned int i = 0; i < count; ++i) {
       colors[i] = NamedRainbow.randomColor();
       colorTargets[i] = NamedRainbow.randomColor();
       colorProgress[i] = 0;
@@ -58,6 +58,9 @@ void ColorMaker::prepColors(unsigned int count, float duration) // duration per 
 
 Color ColorMaker::getColor(unsigned int index)
 {
+  if (index >= this->count) {
+    logf("GETTING OUT OF BOUNDS COLOR at %u >= %u", index, this->count);
+  }
   if (ColorIsNoColor(colorCache[index])) {
     colorCache[index] = ColorWithInterpolatedColors(colors[index], colorTargets[index], colorProgress[index] * 100, 100);
   }
@@ -93,4 +96,3 @@ void ColorMaker::reset()
 }
 
 #endif // COLORMAKER_H
-

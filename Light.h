@@ -99,7 +99,7 @@ void Light::transitionTick(unsigned long milliseconds)
     
     if (progress >= 1) {
       if (!ColorIsEqualToColor(color, targetColor)) {
-        logf("Not equal!, progress = %f, curvedprogress = %f, color = (%i, %i, %i)", progress, curvedTransitionProgress, ((int)color.red, (int)color.green, (int)color.blue));
+        logf("Not equal!, progress = %f, curvedprogress = %f, color = (%i, %i, %i)", progress, curvedTransitionProgress, (int)color.red, (int)color.green, (int)color.blue);
       }
       progress = 1.0;
     }

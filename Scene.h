@@ -162,8 +162,8 @@ void Scene::updateStrand()
   float brightnessAdjustment = getBrightness();
   
   float soundMultiplier = 1.0;
-  bool useSound = false;
 #ifdef SOUND_DIAL
+  bool useSound = false;
   float soundSensitivity = PotentiometerRead(SOUND_DIAL, 10, 204);
   useSound = soundSensitivity < 200;
   
@@ -392,7 +392,7 @@ void Scene::setMode(Mode mode)
         break;
 #if ARDUINO_DUE || TEENSY
       case ModeInterferingWaves:
-        automaticColorsCount = _lightCount / (float)kInterferringWavesNum;
+        automaticColorsCount = kInterferringWavesNum;
         _sceneVariation = (float *)malloc(automaticColorsCount * sizeof(float));
         _leaders = (float *)malloc(automaticColorsCount * sizeof(float));
         for (int i = 0; i < automaticColorsCount; ++i) {
@@ -439,9 +439,9 @@ void Scene::tick()
     _lights[i]->transitionTick(tickTime);
   }
   
+#if DEVELOPER_BOARD
   static bool allOff = false;
   static bool startedOffFade = false;
-#if DEVELOPER_BOARD
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!startedOffFade) {
       for (unsigned int i = 0; i < _lightCount; ++i) {
@@ -527,7 +527,6 @@ void Scene::tick()
     case ModeLightningBugs: {
       // cycle the lightning bugs density over a minute
       unsigned int chance = 1400 + 1000 * sin(M_PI * time / 1000 / 60);
-      logf("chance = %u", chance);
       for (unsigned int i = 0; i < _lightCount; ++i) {
         Light *light = _lights[i];
         if (!light->isTransitioning()) {
@@ -614,7 +613,7 @@ void Scene::tick()
       memset(_colorScratch, 0, _lightCount * sizeof(Color));
       
       float lightsChunk = _lightCount / (float)kInterferringWavesNum;
-      for (int waveIndex = 0; waveIndex < kInterferringWavesNum; ++waveIndex) {
+      for (unsigned int waveIndex = 0; waveIndex < kInterferringWavesNum; ++waveIndex) {
         if (waveIndex < kInterferringWavesNum / 2.0) { // Half the colors going in each direction
           _leaders[waveIndex] = _followLeader + 2 * waveIndex * lightsChunk + _sceneVariation[waveIndex];
         } else {
@@ -628,7 +627,6 @@ void Scene::tick()
           int lightIndex = (int)(_leaders[waveIndex] + w + _lightCount) % _lightCount;
           float distance = MOD_DISTANCE(lightIndex, _leaders[waveIndex], _lightCount);
           if (distance < halfWave) {
-            
             Color existingColor = _colorScratch[lightIndex];
             
             float litRatio = (existingColor.red + existingColor.green + existingColor.blue) / (float)(3 * 255);
@@ -721,7 +719,7 @@ void Scene::tick()
         unsigned int ping = fast_rand(_lightCount);
         Color c = NamedRainbow.randomColor();
 
-        for (int i = (ping - 1); i <= ping + 1; ++i) {
+        for (unsigned int i = (ping - 1); i <= ping + 1; ++i) {
           unsigned int light = (i + _lightCount) % _lightCount;
           _lights[light]->transitionToColor(c, 0.25, LightTransitionEaseOut);
         }
@@ -868,10 +866,10 @@ void Scene::tick()
 #endif
 #endif
   }
-  
+
+#if DEVELOPER_BOARD
   // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres
   static bool button1Down = true;
-#if DEVELOPER_BOARD
   if (kHasDeveloperBoard && digitalRead(TCL_MOMENTARY1) == LOW) {
     if (!button1Down) {
       setMode((Mode)((_mode + 1) % ModeCount));
