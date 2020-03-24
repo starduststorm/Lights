@@ -29,8 +29,8 @@ static const Color kNightColor = MakeColor(0, 0, 0x10);
 bool ColorIsEqualToColor(Color c1, Color c2);
 
 bool ColorIsNoColor(Color c);
-// Transition and intensity are both in the range [0, 100]
-Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity);
+
+Color ColorWithInterpolatedColors(Color c1, Color c2, uint8_t transition, uint8_t intensity);
 
 bool ColorTransitionWillProduceWhite(Color c1, Color c2);
 

@@ -17,8 +17,7 @@
 
 typedef enum {
   LightTransitionLinear = 0,
-  LightTransitionEaseIn,
-  LightTransitionEaseOut,
+  LightTransitionEaseInOut,
 } LightTransitionCurve;
 
 
@@ -30,12 +29,12 @@ public:
   Color targetColor;
   Color originalColor;
   
-  float progress; // [0, 1]
-  float duration; // in seconds
+  unsigned long duration; // in millis
+  unsigned long transitionStart;
   LightTransitionCurve curve;
   
-  void transitionToColor(Color transitionTargetColor, float rate, LightTransitionCurve curve);
-  void transitionToColor(Color transitionTargetColor, float rate);
+  void transitionToColor(Color transitionTargetColor, int durationMillis, LightTransitionCurve curve);
+  void transitionToColor(Color transitionTargetColor, int durationMillis);
   void stopTransition();
   void transitionTick(unsigned long milliseconds);
   bool isTransitioning();
@@ -46,69 +45,64 @@ public:
   int modeState; // For the Scene mode to use to store state
 };
 
-Light::Light() : duration(0), progress(1.0)
+Light::Light() : duration(0), transitionStart(0)
 {
 }
 
 // FIXME: Add a special transition mode which ignores global speed, use for lightning bugs, power switch, etc.
 
-void Light::transitionToColor(Color transitionTargetColor, float durationInSeconds, LightTransitionCurve curve)
+void Light::transitionToColor(Color transitionTargetColor, int durationMillis, LightTransitionCurve curve)
 {
-  if (durationInSeconds <= 0) {
-    durationInSeconds = 1;
+  if (durationMillis <= 0) {
+    durationMillis = 1;
   }
   targetColor = transitionTargetColor;
   originalColor = color;
-  duration = durationInSeconds;
-  progress = 0;
+  duration = durationMillis;
+  transitionStart = millis();
   curve = curve;
 }
 
-void Light::transitionToColor(Color transitionTargetColor, float duration)
+void Light::transitionToColor(Color transitionTargetColor, int durationMillis)
 {
-  transitionToColor(transitionTargetColor, duration, LightTransitionLinear);
+  transitionToColor(transitionTargetColor, durationMillis, LightTransitionLinear);
 }
 
 void Light::stopTransition()
 {
-  progress = 1.0;
+  transitionStart = 0;
 }
 
 void Light::transitionTick(unsigned long milliseconds)
 {
-  if (progress < 1.0) {
-    progress = MIN(progress + milliseconds / (duration * 1000), 1.0);
-    float curvedTransitionProgress = progress;
+  if (isTransitioning()) {
+    uint8_t progress = min((uint8_t)0xFF, 0xFF * (millis() - transitionStart) / duration);
+    uint8_t curvedTransitionProgress = progress;
     
     switch (curve) {
       case LightTransitionLinear:
         break;
-      case LightTransitionEaseIn:
-        curvedTransitionProgress *= curvedTransitionProgress;
-        break;
-      case LightTransitionEaseOut:
-        curvedTransitionProgress = 1 - curvedTransitionProgress;
-        curvedTransitionProgress *= curvedTransitionProgress;
-        curvedTransitionProgress = 1 - curvedTransitionProgress;
+      case LightTransitionEaseInOut:
+        curvedTransitionProgress = ease8InOutQuad(progress);
         break;
     }
     
-    color.red = originalColor.red + curvedTransitionProgress * (targetColor.red - originalColor.red);
-    color.green = originalColor.green + curvedTransitionProgress * (targetColor.green - originalColor.green);
-    color.blue = originalColor.blue + curvedTransitionProgress * (targetColor.blue - originalColor.blue);
+    color.red = lerp8by8(originalColor.red, targetColor.red,  curvedTransitionProgress);
+    color.green = lerp8by8(originalColor.green, targetColor.green, curvedTransitionProgress);
+    color.blue = lerp8by8(originalColor.blue, targetColor.blue, curvedTransitionProgress);
     
-    if (progress >= 1) {
+    if (progress == 0xFF) {
       if (!ColorIsEqualToColor(color, targetColor)) {
-        logf("Not equal!, progress = %f, curvedprogress = %f, color = (%i, %i, %i)", progress, curvedTransitionProgress, (int)color.red, (int)color.green, (int)color.blue);
+        logf("Not equal!, progress = %u, curvedprogress = %u, color = (%i, %i, %i)", progress, curvedTransitionProgress, (int)color.red, (int)color.green, (int)color.blue);
       }
-      progress = 1.0;
+      transitionStart = 0;
     }
   }
 }
 
 bool Light::isTransitioning()
 {
-  return (progress < 1.0);
+  return (transitionStart != 0);
 }
 
 #if SERIAL_LOGGING

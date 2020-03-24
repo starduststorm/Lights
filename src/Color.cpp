@@ -1,4 +1,6 @@
 
+#include <FastLED.h>
+
 #include "Arduino.h"
 #include "Color.h"
 #include "Utilities.h"
@@ -26,17 +28,15 @@ bool ColorIsNoColor(Color c)
   return c.filler != 0;
 }
 
-// Transition and intensity are both in the range [0, 100]
-Color ColorWithInterpolatedColors(Color c1, Color c2, int transition, int intensity)
+Color ColorWithInterpolatedColors(Color c1, Color c2, uint8_t transition, uint8_t intensity)
 {
-  // This is all integer math for speediness
   byte r, g, b;
-  r = c1.red - transition * c1.red / 100 + transition * c2.red / 100;
-  r = intensity * r / 100;
-  g = c1.green - transition * c1.green / 100 + transition * c2.green / 100;
-  g = intensity * g / 100;
-  b = c1.blue - transition * c1.blue / 100 + transition * c2.blue / 100;
-  b = intensity * b / 100;
+  r = c1.red - transition * c1.red / 0xFF + transition * c2.red / 0xFF;
+  r = intensity * r / 0xFF;
+  g = c1.green - transition * c1.green / 0xFF + transition * c2.green / 0xFF;
+  g = intensity * g / 0xFF;
+  b = c1.blue - transition * c1.blue / 0xFF + transition * c2.blue / 0xFF;
+  b = (int)intensity * b / 0xFF;
   
   return MakeColor(r, g, b);
 }
@@ -81,6 +81,7 @@ Color Palette::randomColor()
 
 Color Palette::getColor(float location)
 {
+  // FIXME: replace with FastLED palettes
   // ensure location is positive and in range
   location = fmodf(fmodf(location, count) + count, count);
   
@@ -91,7 +92,7 @@ Color Palette::getColor(float location)
     float fraction = modff(location, &index);
     Color c1 = colors[(int)index];
     Color c2 = colors[(int)index + 1];
-    return ColorWithInterpolatedColors(c1, c2, 100 * fraction, 100);
+    return ColorWithInterpolatedColors(c1, c2, 0xFF * fraction, 0xFF);
   }
 }
 

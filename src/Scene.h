@@ -17,7 +17,6 @@ typedef enum {
   
   ModeLightningBugs,
   ModeParity,
-  ModeTwinkle,
 #if ARDUINO_DUE || TEENSY
   ModeInterferingWaves,
 #endif
@@ -26,10 +25,12 @@ typedef enum {
   ModeCount,
   // These are all either boring or need work.
   
-
+  ModeTwinkle,
   ModeBoomResponder,
   ModeBounce,
 } Mode;
+
+static const bool kLightningBugsIsEasterEgg = false;
 
 struct SpeedRange {
   float low;
@@ -54,8 +55,6 @@ static SpeedRange kModeRanges[ModeCount] = {0};
 
 static const unsigned int kInterferringWavesNum = LED_COUNT / 20;
 
-#pragma mark - 
-
 class Scene {
 private:
   unsigned int _lightCount=0;
@@ -68,7 +67,7 @@ private:
 #if MEGA_WS2811
   WS2811Renderer *ws2811Renderer;
 #elif FAST_LED
-  CRGB leds[LED_COUNT];
+  CRGBArray<LED_COUNT> leds;
 #endif
 
   float _globalSpeed; // Multiplier for global follow and fade speed
@@ -89,7 +88,7 @@ private:
   
   //
   
-  void transitionAll(Color c, float rate);
+  void transitionAll(Color c, int durationMillis);
   
   void updateStrand();
   SpeedRange speedRangeForMode(Mode mode);
@@ -102,8 +101,6 @@ public:
   ~Scene();
   Mode randomMode();
 };
-
-#pragma mark - Private
 
 float getBrightness()
 {
@@ -187,7 +184,7 @@ void Scene::updateStrand()
 #endif
   for (unsigned int i = 0; i < _lightCount; ++i) {
     Light *light = _lights[i];
-    float red = light->color.red, green = light->color.green, blue = light->color.blue;
+    int red = light->color.red, green = light->color.green, blue = light->color.blue;
     
     Color color = _adjustColorForScene(light->color, soundMultiplier, brightnessAdjustment);
     Color targetColor = _adjustColorForScene(light->targetColor, soundMultiplier, brightnessAdjustment);
@@ -216,13 +213,8 @@ void Scene::updateStrand()
     red = min(1.1 * red, 255);
     
     ws2811Renderer->setPixel(i, red, green, blue);
-#elif FAST_LED 
-#if TEENSY_WS2812
-    // RGB == GRB? *shrug*
-    leds[i] = CRGB(green, red, blue);
-#else
+#elif FAST_LED
     leds[i] = CRGB(red, green, blue);
-#endif
 #endif
   }
 
@@ -232,11 +224,15 @@ void Scene::updateStrand()
 #elif MEGA_WS2811
   ws2811Renderer->render();
 #elif FAST_LED
-  FastLED.show(); 
+#ifdef FAST_LED_PIN_2
+  // Flip strand 2 to make pattern continuous
+  CRGBArray<LED_COUNT/2> ledTemp;
+  ledTemp(LED_COUNT/2-1, 0) = leds(LED_COUNT/2, LED_COUNT-1); // mirror
+  leds(LED_COUNT/2, LED_COUNT-1) = ledTemp;
+#endif
+  FastLED.show();
 #endif
 }
-
-#pragma mark - Convenience
 
 void Scene::applyAll(Color c)
 {
@@ -245,14 +241,12 @@ void Scene::applyAll(Color c)
   }
 }
 
-void Scene::transitionAll(Color c, float rate)
+void Scene::transitionAll(Color c, int durationMillis)
 {
   for (unsigned int i = 0; i < _lightCount; ++i) {
-    _lights[i]->transitionToColor(c, rate);
+    _lights[i]->transitionToColor(c, durationMillis);
   }
 }
-
-#pragma mark - Public
 
 void setSpeedRangeForMode(SpeedRange speedRange, Mode mode)
 {
@@ -280,10 +274,13 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0)
 #if MEGA_WS2811
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
 #elif FAST_LED
-  LEDS.addLeds<WS2812, FAST_LED_PIN, RGB>(leds, LED_COUNT);
+  LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_1, RGB>(leds, LED_COUNT/2, LED_COUNT/2);
+#ifdef FAST_LED_PIN_2
+  LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_2, RGB>(leds, LED_COUNT/2);
+#endif
   LEDS.setBrightness(0xFF);
 #endif
-  
+   
   applyAll(kBlackColor);
 
   _colorMaker = new ColorMaker();
@@ -323,7 +320,7 @@ Mode Scene::randomMode()
     // If lights are left on for more than 8 hours, start including the lightning bugs scene
     // If somone wanders about the house late at night, sees lightning bugs, and goes "huh, cool" I'll consider it a success.
     static long kEightHours = 8L * 60L * 60L * 1000L;
-    if (mode == ModeLightningBugs && millis() < kEightHours) {
+    if (kLightningBugsIsEasterEgg && mode == ModeLightningBugs && millis() < kEightHours) {
       modeAllowed = false;
     }
 #elif DEVELOPER_BOARD
@@ -355,7 +352,7 @@ void Scene::setMode(Mode mode)
     switch (_mode) {
       case ModeLightningBugs:
         // When ending lightning bugs, have all the bugs go out
-        transitionAll(kNightColor, 1);
+        transitionAll(kNightColor, 1000);
         break;
       default:
         break;
@@ -366,7 +363,7 @@ void Scene::setMode(Mode mode)
     _soundPeak = 0;
     
     int automaticColorsCount = 0;
-    float automaticColorsDuration = 3.0;
+    float automaticColorsDuration = 3000;
     
     free(_colorScratch);
     _colorScratch = NULL;
@@ -388,7 +385,7 @@ void Scene::setMode(Mode mode)
     
     switch (_mode) {
       case ModeLightningBugs:
-        transitionAll(kNightColor, 1.2);
+        transitionAll(kNightColor, 1200);
         break;
 #if ARDUINO_DUE || TEENSY
       case ModeInterferingWaves:
@@ -398,13 +395,13 @@ void Scene::setMode(Mode mode)
         for (int i = 0; i < automaticColorsCount; ++i) {
           _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 10.0;
         }
-        automaticColorsDuration = 5.0;
+        automaticColorsDuration = 5000;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
 #endif
       case ModeWaves: {
         automaticColorsCount = 1;
-        automaticColorsDuration = 6.0;
+        automaticColorsDuration = 6000;
         _sceneVariation = new float(fast_rand(3) == 0 ? 50 : 20); // wave size, assumes number of lights is roughly divisible by 50
         break;
       case ModeRainbow:
@@ -416,7 +413,7 @@ void Scene::setMode(Mode mode)
       case ModeTwinkle:
         for (unsigned i = 0; i < _lightCount; ++i) {
           Color color = ROYGBIVRainbow.randomColor();
-          _lights[i]->transitionToColor(color, 1);
+          _lights[i]->transitionToColor(color, 1000);
         }
         break;
       default: break;
@@ -445,7 +442,7 @@ void Scene::tick()
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!startedOffFade) {
       for (unsigned int i = 0; i < _lightCount; ++i) {
-        _lights[i]->transitionToColor(kBlackColor, 1, LightTransitionEaseOut);
+        _lights[i]->transitionToColor(kBlackColor, 1000 LightTransitionEaseInOut);
       }
       startedOffFade = true;
     }
@@ -473,7 +470,7 @@ void Scene::tick()
   _followLeader += (_directionIsReversed ? -1 : 1) * (_followSpeed * tickTime / 1000.0);
   _followLeader = fmodf(_followLeader + _lightCount, _lightCount);
 
-  _colorMaker->tick(tickTime);
+  _colorMaker->tick();
   
   switch (_mode) {
     case ModeFire:
@@ -506,17 +503,17 @@ void Scene::tick()
           
           if (choice < 10) {
             // 10% of the time, fade slowly to black
-            light->transitionToColor(kBlackColor, 0.5);
+            light->transitionToColor(kBlackColor, 500);
           } else {
             // Otherwise, fade or snap to another color
             Color new_color = palette[fast_rand(sizeof(palette)/sizeof(palette[0]))];
             if (choice < 95) {
-              Color mixedColor = ColorWithInterpolatedColors(light->color, new_color, fast_rand(101), fast_rand(101));
-              light->transitionToColor(mixedColor, 0.24);
+              Color mixedColor = ColorWithInterpolatedColors(light->color, new_color, fast_rand(0x100), fast_rand(0x100));
+              light->transitionToColor(mixedColor, 240);
             } else {
               light->color = new_color;
               // after setting the color, do a fade to this same color to keep the light "busy" for a short time.
-              light->transitionToColor(new_color, 0.1);
+              light->transitionToColor(new_color, 100);
             }
           }
         }
@@ -533,17 +530,17 @@ void Scene::tick()
           switch (light->modeState) {
             case 1:
               // When putting a bug out, fade to black first, otherwise we fade from yellow(ish) to blue and go through white.
-              light->transitionToColor(kBlackColor, 0.45, LightTransitionEaseOut);
+              light->transitionToColor(kBlackColor, 450, LightTransitionEaseInOut);
               light->modeState = 2;
               break;
             case 2:
-              light->transitionToColor(kNightColor, 0.45);
+              light->transitionToColor(kNightColor, 450);
               light->modeState = 0;
               break;
             default:
               if (fast_rand(chance) == 0) {
                 // Blinky blinky
-                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 0.35);
+                light->transitionToColor(MakeColor(0xD0, 0xFF, 0), 350);
                 light->modeState = 1;
               }
               break;
@@ -555,7 +552,7 @@ void Scene::tick()
     
     case ModeBounce: {
       static int direction = 1;
-      _lights[(int)_followLeader]->transitionToColor(kBlackColor, 0.4);
+      _lights[(int)_followLeader]->transitionToColor(kBlackColor, 400);
       _followLeader = _followLeader + direction;
       _lights[(int)_followLeader]->color = RGBRainbow.randomColor();
       if (_followLeader == _lightCount - 1  || _followLeader == 0) {
@@ -567,7 +564,7 @@ void Scene::tick()
     case ModeWaves: {
       const unsigned int waveLength = (float)*_sceneVariation;
       // Needs to fade out over less than half a wave, so there are some off in the middle.
-      const float fadeDuration = (waveLength / 2.0) / (_followSpeed * _globalSpeed);
+      const int fadeDuration = 1000 * (waveLength / 2.0) / (_followSpeed * _globalSpeed);
       
       Color waveColor = _colorMaker->getColor(0);
       
@@ -577,10 +574,10 @@ void Scene::tick()
         unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
 
         if (!_lights[turnOnLeaderIndex]->isTransitioning()) {
-          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
+          _lights[turnOnLeaderIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseInOut);
         }
         if (!_lights[turnOffLeaderIndex]->isTransitioning()) {
-          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration * 0.75, LightTransitionEaseOut);
+          _lights[turnOffLeaderIndex]->transitionToColor(kBlackColor, fadeDuration * 0.75, LightTransitionEaseInOut);
         }
       }
       break;
@@ -588,13 +585,13 @@ void Scene::tick()
     
     case ModeRainbow: {
       const unsigned int waveLength = 7;
-      const float fadeDuration = (waveLength - 2) / (_followSpeed * _globalSpeed) * 0.9;
+      const int fadeDuration = 1000 * (waveLength - 2) / (_followSpeed * _globalSpeed) * 0.9;
       
       for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
         unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
         Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
         if (!_lights[changeIndex]->isTransitioning()) {
-          _lights[changeIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseIn);
+          _lights[changeIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseInOut);
         }
       }
       break;
@@ -603,7 +600,7 @@ void Scene::tick()
 #if ARDUINO_DUE || TEENSY
     case ModeInterferingWaves: {
       const int waveLength = 18;
-      const float halfWave = waveLength / 2;
+      const int halfWave = waveLength / 2;
       
       // For the first 3 seconds of interfering waves, fade from previous mode
       static const int kFadeTime = 3000;
@@ -611,7 +608,6 @@ void Scene::tick()
       bool inModeTransition = modeTime < kFadeTime;
       
       memset(_colorScratch, 0, _lightCount * sizeof(Color));
-      
       float lightsChunk = _lightCount / (float)kInterferringWavesNum;
       for (unsigned int waveIndex = 0; waveIndex < kInterferringWavesNum; ++waveIndex) {
         if (waveIndex < kInterferringWavesNum / 2.0) { // Half the colors going in each direction
@@ -629,35 +625,25 @@ void Scene::tick()
           if (distance < halfWave) {
             Color existingColor = _colorScratch[lightIndex];
             
-            float litRatio = (existingColor.red + existingColor.green + existingColor.blue) / (float)(3 * 255);
-            // If the existing light is less than 3% lit, use the whole new color. Otherwise smoothly fade into splitting the difference.
-            float additionalFade = (litRatio < 0.03 ? 50 : (litRatio > 0.1 ? 0 : (50 - 50 * litRatio / 0.1)));
+            uint8_t litRatio = (existingColor.red + existingColor.green + existingColor.blue) / 3;
+            // If the existing light is less than about 3% lit, use the whole new color. Otherwise smoothly fade into splitting the difference.
+            const uint8_t minLit = 0xFF * 0.03;
+            const uint8_t normLit = 0xFF / 10;
+            uint8_t additionalFade = (litRatio < minLit ? 0x7F : (litRatio > normLit ? 0 : (0x7F - 0x7F * litRatio / normLit)));
             
 //              logf("Existing color = (%i, %i, %i), litRation = %f, additionalFade = %f", existingColor.red, existingColor.green, existingColor.blue, litRatio, additionalFade);
             
-            Color color = ColorWithInterpolatedColors(existingColor, waveColor,
-                                                     ((1 - distance / halfWave) * (50 + additionalFade)),
-                                                     100);
+            uint8_t fadeProgress = (1 - distance / (float)halfWave) * (0x7F + additionalFade);
+            Color color = ColorWithInterpolatedColors(existingColor, waveColor, fadeProgress, 0xFF);
             _colorScratch[lightIndex] = color;
             
-            float red = color.red, green = color.green, blue = color.blue;
-            red /= 255;
-            red *= red;
-            red *= 255;
-            
-            green /= 255;
-            green *= green;
-            green *= 255;
-            
-            blue /= 255;
-            blue *= blue;
-            blue *= 255;
-            
-            color.red = red, color.blue = blue, color.green = green;
-            
+            color.red = ease8InOutQuad(color.red);
+            color.green = ease8InOutQuad(color.green);
+            color.blue = ease8InOutQuad(color.blue);
+
             if (inModeTransition) {
               // Fade from previous mode
-              color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 100, 100);
+              color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 0xFF, 0xFF);
             }
             
             _lights[lightIndex]->color = color;
@@ -668,7 +654,7 @@ void Scene::tick()
       for (unsigned int i = 0; i < _lightCount; ++i) {
         if (ColorIsEqualToColor(_colorScratch[i], kBlackColor)) {
           if (inModeTransition) {
-            _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, (float)modeTime / kFadeTime * 100, 100);
+            _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, (float)modeTime / kFadeTime * 0xFF, 0xFF);
           } else {
             _lights[i]->color = kBlackColor;
           }
@@ -696,7 +682,7 @@ void Scene::tick()
       for (unsigned int i = 0; i < _lightCount; ++i) {
         if (!_lights[i]->isTransitioning()) { // serves to not interrupt existing fades when this pattern stats
           int parity = i % parityCount;
-          _lights[i]->transitionToColor(colors[parity], 2);
+          _lights[i]->transitionToColor(colors[parity], 2000);
         }
       }
       break;
@@ -705,7 +691,7 @@ void Scene::tick()
     case ModeBoomResponder:
       for (unsigned int i = 0; i < _lightCount; ++i) {
         if (!_lights[i]->isTransitioning()) {
-          _lights[i]->transitionToColor(NamedRainbow.randomColor(), 1);
+          _lights[i]->transitionToColor(NamedRainbow.randomColor(), 1000);
         }
       }
       break;
@@ -721,7 +707,7 @@ void Scene::tick()
 
         for (unsigned int i = (ping - 1); i <= ping + 1; ++i) {
           unsigned int light = (i + _lightCount) % _lightCount;
-          _lights[light]->transitionToColor(c, 0.25, LightTransitionEaseOut);
+          _lights[light]->transitionToColor(c, 250, LightTransitionEaseInOut);
         }
         
         _timeMarker = time;
@@ -763,7 +749,7 @@ void Scene::tick()
           c.green *= 0.92 * multiplier;
           c.blue *= 0.92 *multiplier;
           
-          _lights[target]->transitionToColor(c, 0.20);
+          _lights[target]->transitionToColor(c, 200);
         }
         lastBlur = time;
       }
@@ -824,7 +810,7 @@ void Scene::tick()
           } while (!acceptableColor);
           
           for (unsigned i = changeSegment; i < _lightCount; i += parity) {
-            _lights[i]->transitionToColor(targetColor, 1);
+            _lights[i]->transitionToColor(targetColor, 1000);
           }
         }
       }

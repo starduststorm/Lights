@@ -8,20 +8,21 @@ public:
   ColorMaker();
   ~ColorMaker();
 
-  void prepColors(unsigned int count, float duration);
+  void prepColors(unsigned int count, unsigned long duration);
   Color getColor(unsigned int index);
-  void tick(unsigned long milliseconds);
+  uint8_t fadeProgress(int index);
+  void tick();
   
   void reset();
 
   Color palette[];
 private:
-  float duration; // in seconds
+  unsigned long duration; // in millis
   unsigned int count;
   
   Color *colors = NULL;
   Color *colorTargets = NULL;
-  float *colorProgress = NULL; // [0.0, 1.0]
+  unsigned long *colorStarts = NULL;
   Color *colorCache = NULL;
 };
 
@@ -35,7 +36,7 @@ ColorMaker::~ColorMaker()
   this->reset();
 }
 
-void ColorMaker::prepColors(unsigned int count, float duration) // duration per color target
+void ColorMaker::prepColors(unsigned int count, unsigned long duration) // duration per color target
 {
   this->reset();
   this->count = count;
@@ -44,16 +45,21 @@ void ColorMaker::prepColors(unsigned int count, float duration) // duration per 
   if (count > 0) {
     colors = (Color *)malloc(count * sizeof(Color));
     colorTargets = (Color *)malloc(count * sizeof(Color));
-    colorProgress = (float *)malloc(count * sizeof(float));
+    colorStarts = (unsigned long *)malloc(count * sizeof(unsigned long));
     colorCache = (Color *)malloc(count * sizeof(Color));
     
     for (unsigned int i = 0; i < count; ++i) {
       colors[i] = NamedRainbow.randomColor();
       colorTargets[i] = NamedRainbow.randomColor();
-      colorProgress[i] = 0;
+      colorStarts[i] = millis();
       colorCache[i] = kNoColor;
     }
   }
+}
+
+uint8_t ColorMaker::fadeProgress(int index) {
+  uint8_t progress = min((uint8_t)0xFF, 0xFF * (millis() - colorStarts[index]) / duration);
+  return progress;
 }
 
 Color ColorMaker::getColor(unsigned int index)
@@ -62,18 +68,17 @@ Color ColorMaker::getColor(unsigned int index)
     logf("GETTING OUT OF BOUNDS COLOR at %u >= %u", index, this->count);
   }
   if (ColorIsNoColor(colorCache[index])) {
-    colorCache[index] = ColorWithInterpolatedColors(colors[index], colorTargets[index], colorProgress[index] * 100, 100);
+    colorCache[index] = ColorWithInterpolatedColors(colors[index], colorTargets[index], fadeProgress(index), 0xFF);
   }
   return colorCache[index];
 }
 
-void ColorMaker::tick(unsigned long milliseconds)
+void ColorMaker::tick()
 {
-  float progress = milliseconds / 1000.0 / duration;
   for (unsigned int i = 0; i < count; ++i) {
-    colorProgress[i] += progress;
-    if (colorProgress[i] == 0 || colorProgress[i] >= 1.0) {
-      colorProgress[i] = 0;
+    uint8_t progress = fadeProgress(i);
+    if (progress == 0xFF) {
+      colorStarts[i] = millis();
       colors[i] = colorTargets[i];
       colorTargets[i] = NamedRainbow.randomColor();
     }
@@ -87,8 +92,8 @@ void ColorMaker::reset()
   colors = NULL;
   free(colorTargets);
   colorTargets = NULL;
-  free(colorProgress);
-  colorProgress = NULL;
+  free(colorStarts);
+  colorStarts = NULL;
   free(colorCache);
   colorCache = NULL;
 
