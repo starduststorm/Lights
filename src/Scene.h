@@ -403,7 +403,7 @@ void Scene::setMode(Mode mode)
         break;
 #endif
       case ModeWaves: {
-        automaticColorsCount = random8(2); // palettize half the time
+        automaticColorsCount = fast_rand(2); // palettize half the time
         logf("  Picked %s", automaticColorsCount == 1 ? "1 color" : "palette");
         automaticColorsDuration = 6000;
         
@@ -413,9 +413,12 @@ void Scene::setMode(Mode mode)
       case ModeRainbow:
         _followColorIndex = fast_rand(ROYGBIVRainbow.count);
         break;
-      case ModeAccumulator:
+      case ModeAccumulator: {
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
+        _sceneVariation = new float(fast_rand(2)); // palettize sometimes
+        paletteRotation.secondsPerPalette = 20;
         break;
+      }
       case ModeTwinkle:
         for (unsigned i = 0; i < _lightCount; ++i) {
           Color color = ROYGBIVRainbow.randomColor();
@@ -715,7 +718,12 @@ void Scene::tick()
       const unsigned int kBlurInterval = 50 / _globalSpeed;
       if (time - _timeMarker > kPingInterval) {
         unsigned int ping = fast_rand(_lightCount);
-        Color c = NamedRainbow.randomColor();
+        Color c = kBlackColor;
+        if (_sceneVariation && *_sceneVariation) {
+          c = Color(paletteRotation.getPaletteColor(random8()));
+        } else {
+          c = NamedRainbow.randomColor();
+        }
 
         for (unsigned int i = (ping - 1); i <= ping + 1; ++i) {
           unsigned int light = (i + _lightCount) % _lightCount;

@@ -54,15 +54,15 @@ unsigned long xorshift96()
     return z;
 }
 
-unsigned int fast_rand(unsigned int minval, unsigned int maxval)
+unsigned int fast_rand(unsigned int minval, unsigned int upperBound)
 {
-  unsigned int val = (unsigned int) ((((xorshift96() & 0xFFFF) * (maxval-minval))>>16) + minval);
+  unsigned int val = (unsigned int) ((((xorshift96() & 0xFFFF) * (upperBound-minval))>>16) + minval);
   return val;
 }
 
-unsigned int fast_rand(unsigned int maxval)
+unsigned int fast_rand(unsigned int upperBound)
 {
-  unsigned int val = (unsigned int) (((xorshift96() & 0xFFFF) * (maxval))>>16);
+  unsigned int val = (unsigned int) (((xorshift96() & 0xFFFF) * (upperBound))>>16);
   return val;
 }
 
