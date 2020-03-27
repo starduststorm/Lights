@@ -40,12 +40,22 @@ static const unsigned int LED_COUNT = 200;
 
 static Scene *gLights;
 
-void setup()
-{
-#if SERIAL_LOGGING
-  int baud = 9600;
-  Serial.begin(baud);
-  logf("%ul millis: Serial logging started at %i baud", millis(), baud);
+static bool serialTimeout = false;
+// static unsigned long setupDoneTime;
+
+void setup() {
+  Serial.begin(57600);
+#if WAIT_FOR_SERIAL
+  long setupStart = millis();
+  while (!Serial) {
+    if (millis() - setupStart > 5000) {
+      serialTimeout = true;
+      break;
+    }
+  }
+  logf("begin - waited %0.2fs for Serial", (millis() - setupStart) / 1000.);
+#elif DEBUG
+  delay(2000);
 #endif
 
 #if ARDUINO_TCL && ARDUINO_DUE
@@ -75,7 +85,6 @@ void setup()
 
 void loop()
 {
-#if SERIAL_LOGGING
   static unsigned int framesPast = 0;
   static unsigned long lastPrint = 0;
   
@@ -89,9 +98,8 @@ void loop()
   } else {
     framesPast++;
   }
-#endif
   
-#if DEBUG && SERIAL_LOGGING && !ARDUINO_DUE
+#if DEBUG && !ARDUINO_DUE
   static int loopCount = 0;
   if (loopCount++ > 1000) {
     Serial.print("Memory free: ");

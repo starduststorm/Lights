@@ -8,6 +8,9 @@ public:
   ColorMaker();
   ~ColorMaker();
 
+  unsigned int getColorCount() {
+    return count;
+  }
   void prepColors(unsigned int count, unsigned long duration);
   Color getColor(unsigned int index);
   uint8_t fadeProgress(int index);

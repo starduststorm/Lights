@@ -2,26 +2,50 @@
 #ifndef COLOR_H
 #define COLOR_H
 
+#include <FastLED.h>
+
 struct Color {
   byte red;
   byte green;
   byte blue;
   byte filler;
+
+  Color() {
+    red = green = blue = 0;
+  }
+
+  Color(CRGB crgb) {
+    red = crgb.r;
+    green = crgb.g;
+    blue = crgb.b;
+  }
+
+  Color(byte r, byte g, byte b) {
+    red = r;
+    green = g;
+    blue = b;
+  }
+  Color(byte r, byte g, byte b, byte fill) {
+    red = r;
+    green = g;
+    blue = b;
+    filler = fill;
+  }
 };
 typedef struct Color Color;
 
-static const Color kBlackColor   = (Color){.red=0,    .green=0,    .blue=0   };
-static const Color kRedColor     = (Color){.red=0xFF, .green=0,    .blue=0   };
-static const Color kOrangeColor  = (Color){.red=0xFF, .green=0x60, .blue=0   };
-static const Color kYellowColor  = (Color){.red=0xFF, .green=0xFF, .blue=0   };
-static const Color kGreenColor   = (Color){.red=0,    .green=0xFF, .blue=0   };
-static const Color kCyanColor    = (Color){.red=0,    .green=0xFF, .blue=0xFF};
-static const Color kBlueColor    = (Color){.red=0,    .green=0,    .blue=0xFF};
-static const Color kIndigoColor  = (Color){.red=0x4B, .green=0,    .blue=0x82};
-static const Color kVioletColor  = (Color){.red=0x8E, .green=0x25, .blue=0xFB};
-static const Color kMagentaColor = (Color){.red=0xFF, .green=0,    .blue=0xFF};
-static const Color kWhiteColor   = (Color){.red=0xFF, .green=0xFF, .blue=0xFF};
-static const Color kNoColor      = (Color){.red=0, .green=0, .blue=0, .filler=0xFF};
+static const Color kBlackColor(0,0,0);
+static const Color kRedColor(0xFF,0,0);
+static const Color kOrangeColor(0xFF,0x60,0);
+static const Color kYellowColor(0xFF, 0xFF, 0);
+static const Color kGreenColor(0,0xFF,0);
+static const Color kCyanColor(0, 0xFF, 0xFF);
+static const Color kBlueColor(0,0, 0xFF);
+static const Color kIndigoColor(0x4B, 0, 0x82);
+static const Color kVioletColor(0x8E, 0x25, 0xFB);
+static const Color kMagentaColor(0xFF, 0, 0xFF);
+static const Color kWhiteColor(0xFF, 0xFF, 0xFF);
+static const Color kNoColor(0, 0, 0, 0xFF);
 
 struct Color MakeColor(byte r, byte g, byte b);
 static const Color kNightColor = MakeColor(0, 0, 0x10);

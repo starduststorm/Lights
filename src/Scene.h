@@ -3,6 +3,7 @@
 #include "Color.h"
 #include "ColorMaker.h"
 #include "Config.h"
+#include "palettes.h"
 
 #if ARDUINO_TCL
 #include <TCL.h>
@@ -29,6 +30,8 @@ typedef enum {
   ModeBoomResponder,
   ModeBounce,
 } Mode;
+
+PaletteRotation<CRGBPalette256> paletteRotation(10 /* min brightness */);
 
 static const bool kLightningBugsIsEasterEgg = false;
 
@@ -400,8 +403,11 @@ void Scene::setMode(Mode mode)
         break;
 #endif
       case ModeWaves: {
-        automaticColorsCount = 1;
+        automaticColorsCount = random8(2); // palettize half the time
+        logf("  Picked %s", automaticColorsCount == 1 ? "1 color" : "palette");
         automaticColorsDuration = 6000;
+        
+        paletteRotation.secondsPerPalette = 20;
         _sceneVariation = new float(fast_rand(3) == 0 ? 50 : 20); // wave size, assumes number of lights is roughly divisible by 50
         break;
       case ModeRainbow:
@@ -566,10 +572,16 @@ void Scene::tick()
       // Needs to fade out over less than half a wave, so there are some off in the middle.
       const int fadeDuration = 1000 * (waveLength / 2.0) / (_followSpeed * _globalSpeed);
       
-      Color waveColor = _colorMaker->getColor(0);
+      Color waveColor = kBlackColor;;
+      if (_colorMaker->getColorCount() > 0) {
+        waveColor = _colorMaker->getColor(0);
+      }
       
       unsigned int waveCount = _lightCount / waveLength;
       for (unsigned int i = 0; i < waveCount; ++i) {
+        if (_colorMaker->getColorCount() == 0) {
+          waveColor = Color(paletteRotation.getPaletteColor(0xFF * i / waveCount));
+        }
         unsigned int turnOnLeaderIndex = ((int)_followLeader + i * waveLength) % _lightCount;
         unsigned int turnOffLeaderIndex = ((int)_followLeader + i * waveLength - waveLength / 2 + _lightCount) % _lightCount;
 

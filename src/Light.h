@@ -38,9 +38,7 @@ public:
   void stopTransition();
   void transitionTick(unsigned long milliseconds);
   bool isTransitioning();
-#if SERIAL_LOGGING
   void printDescription();
-#endif
   
   int modeState; // For the Scene mode to use to store state
 };
@@ -105,7 +103,6 @@ bool Light::isTransitioning()
   return (transitionStart != 0);
 }
 
-#if SERIAL_LOGGING
 void Light::printDescription()
 {
   char buf[20];
@@ -116,4 +113,3 @@ void Light::printDescription()
   Serial.print(isTransitioning() ? "yes" : "no");
   Serial.print(">");
 }
-#endif

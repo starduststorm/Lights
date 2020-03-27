@@ -1,6 +1,12 @@
 
 #include "Config.h"
 
+#if DEBUG
+#define assert(expr, reason) if (!(expr)) { logf("ASSERTION FAILED: %s", reason); while (1) delay(100); }
+#else
+#define assert(expr, reason) if (!(expr)) { logf("ASSERTION FAILED: %s", reason); }
+#endif
+
 struct Color;
 
 void logf(const char *format, ...);
@@ -15,9 +21,7 @@ unsigned int fast_rand(unsigned int maxval);
 int get_free_memory();
 #endif
 
-#if SERIAL_LOGGING
 void PrintColor(Color c);
-#endif
 
 void logf(const char *format, ...);
 

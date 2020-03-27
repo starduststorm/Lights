@@ -12,15 +12,15 @@
 #define TEENSY 1
 #define FASTLED_PIXEL_TYPE WS2811
 
-#define FAST_LED_PIN_1 11
-#define FAST_LED_PIN_2 14
+#define FAST_LED_PIN_1 12 // pin 11 on double-strand setups
+// #define FAST_LED_PIN_2 14
 
 /* Logging */
-#define SERIAL_LOGGING 1
 #define DEBUG 0
+#define WAIT_FOR_SERIAL 0
 
 /* Options */
-// #define TEST_MODE (ModeAccumulator)
+// #define TEST_MODE (ModeWaves)
 #define MODE_TIME (80)
 #define DEFAULT_BRIGHNESS 1.0
 

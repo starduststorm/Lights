@@ -85,7 +85,6 @@ int get_free_memory()
 }
 #endif
 
-#if SERIAL_LOGGING
 void PrintColor(Color c)
 {
   Serial.print("(");
@@ -96,11 +95,9 @@ void PrintColor(Color c)
   Serial.print(c.blue);
   Serial.print(")");
 }
-#endif
 
 void logf(const char *format, ...)
 {
-#if SERIAL_LOGGING
   va_list argptr;
   va_start(argptr, format);
 #if ARDUINO_DUE
@@ -113,6 +110,5 @@ void logf(const char *format, ...)
   va_end(argptr);
   Serial.println(buf);
   free(buf);
-#endif
 }
 
