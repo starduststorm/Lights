@@ -12,8 +12,14 @@
 #define TEENSY 1
 #define FASTLED_PIXEL_TYPE WS2811
 
-#define FAST_LED_PIN_1 12 // pin 11 on double-strand setups
-// #define FAST_LED_PIN_2 14
+#define DOUBLE_STRAND 0
+
+#if DOUBLE_STRAND
+    #define FAST_LED_PIN_1 11
+    #define FAST_LED_PIN_2 14
+#else
+    #define FAST_LED_PIN_1 12
+#endif
 
 /* Logging */
 #define DEBUG 0
