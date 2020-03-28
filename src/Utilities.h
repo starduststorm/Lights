@@ -15,6 +15,7 @@ float PotentiometerReadf(int pin, float rangeMin, float rangeMax);
 long PotentiometerRead(int pin, int rangeMin, int rangeMax);
 
 void fast_srand();
+int lsb_noise(int pin, int numbits);
 unsigned int fast_rand(unsigned int minval, unsigned int maxval);
 unsigned int fast_rand(unsigned int maxval);
 #if DEBUG
@@ -25,3 +26,4 @@ void PrintColor(Color c);
 
 void logf(const char *format, ...);
 
+int mod_wrap(int x, int m);

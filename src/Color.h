@@ -1,8 +1,8 @@
-
 #ifndef COLOR_H
 #define COLOR_H
 
 #include <FastLED.h>
+#include <string>
 
 struct Color {
   byte red;
@@ -18,18 +18,27 @@ struct Color {
     red = crgb.r;
     green = crgb.g;
     blue = crgb.b;
+    filler = 0;
   }
 
   Color(byte r, byte g, byte b) {
     red = r;
     green = g;
     blue = b;
+    filler = 0;
   }
   Color(byte r, byte g, byte b, byte fill) {
     red = r;
     green = g;
     blue = b;
     filler = fill;
+  }
+
+  std::string description() {
+    char buf[16];
+    snprintf(buf, 16, "(%u, %u, %u)", red, green, blue);
+    std::string desc = buf;
+    return desc;
   }
 };
 typedef struct Color Color;

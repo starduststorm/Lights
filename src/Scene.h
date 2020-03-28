@@ -31,8 +31,6 @@ typedef enum {
   ModeBounce,
 } Mode;
 
-PaletteRotation<CRGBPalette256> paletteRotation(10 /* min brightness */);
-
 static const bool kLightningBugsIsEasterEgg = false;
 
 struct SpeedRange {
@@ -89,6 +87,8 @@ private:
   float *_leaders = NULL; // for interfering waves
   unsigned long _timeMarker=0;
   
+  PaletteRotation<CRGBPalette256> paletteRotation;
+
   //
   
   void transitionAll(Color c, int durationMillis);
@@ -258,7 +258,7 @@ void setSpeedRangeForMode(SpeedRange speedRange, Mode mode)
   }
 }
 
-Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0)
+Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0), paletteRotation(10)
 { 
   setSpeedRangeForMode(SpeedRangeMake(0.7, 1.3), ModeFire);
   setSpeedRangeForMode(speedRangeForMode(ModeFire), ModeBlueFire);
@@ -419,6 +419,11 @@ void Scene::setMode(Mode mode)
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         _sceneVariation = new float(fast_rand(2)); // palettize sometimes
         paletteRotation.secondsPerPalette = 20;
+        break;
+      }
+      case ModeParity: {
+        paletteRotation.secondsPerPalette = 10;
+        _followSpeed = 12;
         break;
       }
       case ModeTwinkle:
@@ -682,24 +687,23 @@ void Scene::tick()
 #endif
     
     case ModeParity: {
-      if (_lights[0]->isTransitioning()) {
-        // serves to keep all the lights in sync
-        break;
-      }
-      const int parityCount = 2;//(kHasDeveloperBoard ? PotentiometerRead(MODE_DIAL, 1, 5) : 2);
-      Color colors[parityCount];
-      for (int i = 0; i < parityCount; ++i) {
-        Color sourceColor = _lights[i]->color;
-        Color targetColor;
-        do {
-          targetColor = NamedRainbow.randomColor();
-        } while (ColorTransitionWillProduceWhite(sourceColor, targetColor));
-        colors[i] = targetColor;
-      }
-      for (unsigned int i = 0; i < _lightCount; ++i) {
-        if (!_lights[i]->isTransitioning()) { // serves to not interrupt existing fades when this pattern stats
+      paletteRotation.tick();
+      
+      const int paletteRange = _lightCount / 2;
+      const int parityCount = 2;
+      for (int i = 0; i < (int)_lightCount; ++i) {
+        if (!_lights[i]->isTransitioning()) { // serves to not interrupt existing fades when this pattern starts
           int parity = i % parityCount;
-          _lights[i]->transitionToColor(colors[parity], 2000);
+          int paletteIndex = map(i + (parity ? paletteRange - _followLeader : _followLeader), 0, paletteRange, 0, 0x100);
+
+          // to avoid palette discontinuities at the endpoints, "bounce" the palette so read up to 0xFF then back down to 0, then back up.
+          paletteIndex = mod_wrap(paletteIndex, 0x200);
+          if (paletteIndex > 0xFF) {
+            paletteIndex = 0x1FF - paletteIndex;
+          }
+
+          Color targetColor = Color(paletteRotation.getPaletteColor(paletteIndex));
+          _lights[i]->color = targetColor;
         }
       }
       break;
@@ -715,6 +719,8 @@ void Scene::tick()
     
     case ModeAccumulator: {
       const int kernelWidth = 1;
+      
+      paletteRotation.tick();
       
       const unsigned int kPingInterval = 30000 / _lightCount / _globalSpeed;
       const unsigned int kBlurInterval = 50 / _globalSpeed;

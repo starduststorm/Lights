@@ -26,7 +26,7 @@
 #define WAIT_FOR_SERIAL 0
 
 /* Options */
-// #define TEST_MODE (ModeWaves)
+// #define TEST_MODE (ModeParity)
 #define MODE_TIME (80)
 #define DEFAULT_BRIGHNESS 1.0
 

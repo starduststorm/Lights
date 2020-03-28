@@ -23,7 +23,7 @@
 // -----------------------------------------
 //
 #include <Wire.h>
-static const unsigned int LED_COUNT = 200;
+static const unsigned int LED_COUNT = 100;
 
 #include <SPI.h>
 
@@ -37,6 +37,9 @@ static const unsigned int LED_COUNT = 200;
 #if ARDUINO_TCL
 #include <TCL.h>
 #endif
+
+#define UNCONNECTED_PIN_1 A9
+#define UNCONNECTED_PIN_2 A3
 
 static Scene *gLights;
 
@@ -74,6 +77,8 @@ void setup() {
 #endif
   
   fast_srand();
+  randomSeed(lsb_noise(UNCONNECTED_PIN_1, 8 * sizeof(uint32_t)));
+  random16_add_entropy(lsb_noise(UNCONNECTED_PIN_2, 8 * sizeof(uint16_t)));
   
   gLights = new Scene(LED_COUNT);
 #ifdef TEST_MODE

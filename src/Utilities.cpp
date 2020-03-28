@@ -2,6 +2,7 @@
 #include "Config.h"
 #include "Arduino.h"
 #include "Color.h"
+#include "Utilities.h"
 
 void logf(const char *format, ...);
 
@@ -30,11 +31,21 @@ Based on Marsaglia, George. (2003). Xorshift RNGs. http://www.jstatsoft.org/v08/
 @todo check timing of xorshift96(), rand() and other PRNG candidates.
  */
 
+ int lsb_noise(int pin, int numbits) {
+  // TODO: Use Entropy.h? Probs not needed just to randomize pattern.
+  int noise = 0;
+  for (int i = 0; i < numbits; ++i) {
+    int val = analogRead(pin);
+    noise = (noise << 1) | (val & 1);
+  }
+  return noise;
+}
+
 void fast_srand()
 {
-  x += analogRead(A0);
-  y += analogRead(A1);
-  z += analogRead(A2);
+  x += lsb_noise(A0, 8 * sizeof(unsigned long));
+  y += lsb_noise(A1, 8 * sizeof(unsigned long));
+  z += lsb_noise(A2, 8 * sizeof(unsigned long));
 }
 
 unsigned long xorshift96()
@@ -96,19 +107,37 @@ void PrintColor(Color c)
   Serial.print(")");
 }
 
+static int vasprintf(char** strp, const char* fmt, va_list ap) {
+  va_list ap2;
+  va_copy(ap2, ap);
+  char tmp[1];
+  int size = vsnprintf(tmp, 1, fmt, ap2);
+  if (size <= 0) {
+    strp=NULL;
+    return size;
+  }
+  va_end(ap2);
+  size += 1;
+  *strp = (char*)malloc(size * sizeof(char));
+  return vsnprintf(*strp, size, fmt, ap);
+}
+
 void logf(const char *format, ...)
 {
   va_list argptr;
   va_start(argptr, format);
-#if ARDUINO_DUE
-  char *buf = NULL;
+  char *buf;
   vasprintf(&buf, format, argptr);
-#else
-  char *buf = (char *)calloc(strlen(format) + 200, sizeof(char));
-  vsnprintf(buf, 200, format, argptr); // Uno doesn't have vasprintf
-#endif
   va_end(argptr);
-  Serial.println(buf);
+  Serial.println(buf ? buf : "LOGF MEMORY ERROR");
+#if DEBUG
+  Serial.flush();
+#endif
   free(buf);
+}
+
+int mod_wrap(int x, int m) {
+  int result = x % m;
+  return result < 0 ? result + m : result;
 }
 
