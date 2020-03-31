@@ -690,7 +690,7 @@ void Scene::tick()
     case ModeParity: {
       paletteRotation.tick();
       
-      const int paletteRange = min(50, _lightCount / 2);
+      const int paletteRange = min(50u, _lightCount / 2);
       const int parityCount = 2;
       for (int i = 0; i < (int)_lightCount; ++i) {
         if (!_lights[i]->isTransitioning()) { // serves to not interrupt existing fades when this pattern starts
