@@ -398,7 +398,7 @@ void Scene::setMode(Mode mode)
         _sceneVariation = (float *)malloc(automaticColorsCount * sizeof(float));
         _leaders = (float *)malloc(automaticColorsCount * sizeof(float));
         for (int i = 0; i < automaticColorsCount; ++i) {
-          _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 10.0;
+          _sceneVariation[i] = ((int)fast_rand(0, 80) - 40) / 4.0;
         }
         automaticColorsDuration = 5000;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
@@ -422,7 +422,7 @@ void Scene::setMode(Mode mode)
         break;
       }
       case ModeParity: {
-        paletteRotation.secondsPerPalette = 10;
+        paletteRotation.secondsPerPalette = 8;
         _followSpeed = 12;
         break;
       }
@@ -612,6 +612,7 @@ void Scene::tick()
       for (unsigned int i = 0; i < _lightCount / waveLength; ++i) {
         unsigned int changeIndex = ((int)_followLeader + i * waveLength) % _lightCount;
         Color waveColor = ROYGBIVRainbow.getColor(_followColorIndex + i);
+        waveColor = ColorWithInterpolatedColors(waveColor, kBlackColor, 0, 0xB0); // dim a little
         if (!_lights[changeIndex]->isTransitioning()) {
           _lights[changeIndex]->transitionToColor(waveColor, fadeDuration, LightTransitionEaseInOut);
         }
@@ -689,7 +690,7 @@ void Scene::tick()
     case ModeParity: {
       paletteRotation.tick();
       
-      const int paletteRange = _lightCount / 2;
+      const int paletteRange = min(50, _lightCount / 2);
       const int parityCount = 2;
       for (int i = 0; i < (int)_lightCount; ++i) {
         if (!_lights[i]->isTransitioning()) { // serves to not interrupt existing fades when this pattern starts
@@ -703,7 +704,10 @@ void Scene::tick()
           }
 
           Color targetColor = Color(paletteRotation.getPaletteColor(paletteIndex));
-          _lights[i]->color = targetColor;
+
+          long modeTime = millis() - _modeStart;
+          long fadeTime = max(100, (2000 - modeTime) / 5);
+          _lights[i]->transitionToColor(targetColor, fadeTime);
         }
       }
       break;
