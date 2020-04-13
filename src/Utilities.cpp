@@ -107,6 +107,12 @@ void PrintColor(Color c)
   Serial.print(")");
 }
 
+std::string colorDesc(CRGB c) {
+  char buf[16];
+  snprintf(buf, 16, "(%u, %u, %u)", c.r, c.g, c.b);
+  return std::string(buf);
+}
+
 static int vasprintf(char** strp, const char* fmt, va_list ap) {
   va_list ap2;
   va_copy(ap2, ap);

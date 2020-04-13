@@ -1,5 +1,7 @@
 
 #include "Config.h"
+#include <string>
+#include <FastLED.h>
 
 #if DEBUG
 #define assert(expr, reason) if (!(expr)) { logf("ASSERTION FAILED: %s", reason); while (1) delay(100); }
@@ -23,6 +25,7 @@ int get_free_memory();
 #endif
 
 void PrintColor(Color c);
+std::string colorDesc(CRGB c);
 
 void logf(const char *format, ...);
 

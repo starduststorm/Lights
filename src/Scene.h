@@ -387,6 +387,8 @@ void Scene::setMode(Mode mode)
     _followLeader = fast_rand(_lightCount);
     _followSpeed = 8; // 8 lights per second by default
     _timeMarker = 0;
+
+    paletteRotation.maxColorJump = 0xFF;
     
     switch (_mode) {
       case ModeLightningBugs:
@@ -423,6 +425,7 @@ void Scene::setMode(Mode mode)
       }
       case ModeParity: {
         paletteRotation.secondsPerPalette = 8;
+        paletteRotation.maxColorJump = 10;
         _followSpeed = 12;
         break;
       }

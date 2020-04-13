@@ -596,6 +596,20 @@ private:
     }
     return false;
   }
+
+  uint8_t paletteColorJump(T palette, bool wrapped=false) {
+    uint8_t maxJump = 0;
+    CRGB lastColor = palette.entries[(wrapped ? sizeof(T)/3 - 1 : 1)];
+    for (uint16_t i = (wrapped ? 0 : 1); i < sizeof(T)/3; ++i) {
+      CRGB color = palette.entries[i];
+      uint8_t distance = (abs((int)color.r - (int)lastColor.r) + abs((int)color.g - (int)lastColor.g) + abs((int)color.b - (int)lastColor.b)) / 3;
+      if (distance > maxJump) {
+        maxJump = distance;
+      }
+      lastColor = color;
+    }
+    return maxJump;
+  }
 public:  
   PaletteManager() {
   }
@@ -604,16 +618,18 @@ public:
     return gGradientPalettes[choice];
   }
   
-  T randomPalette(uint8_t minBrightness=0) {
+  T randomPalette(uint8_t minBrightness=0, uint8_t maxColorJump=0xFF) {
     unsigned firstChoice = random16(gGradientPaletteCount);
     unsigned choice = firstChoice;
     T palette = gGradientPalettes[choice];
     bool belowMinBrightness = paletteHasColorBelowThreshold(palette, minBrightness);
-    while (belowMinBrightness) {
+    uint8_t colorJump = paletteColorJump(palette);
+    while (belowMinBrightness || colorJump > maxColorJump) {
       choice = addmod8(choice, 1, gGradientPaletteCount);
-      assert(choice != firstChoice, "No palettes of acceptible brightness");
+      assert(choice != firstChoice, "No palettes of acceptable brightness & color continuity");
       palette = gGradientPalettes[choice];
       belowMinBrightness = paletteHasColorBelowThreshold(palette, minBrightness);
+      colorJump = paletteColorJump(palette);
     }
     logf("  Picked Palette %u", choice);
     return palette;
@@ -663,12 +679,13 @@ private:
   uint8_t colorIndexCount = 0;
 
   T choosePalette() {
-    return manager.randomPalette(minBrightness);
+    return manager.randomPalette(minBrightness, maxColorJump);
   }
 
 public:
   int secondsPerPalette = 10;
   uint8_t minBrightness = 0;
+  uint8_t maxColorJump = 0xFF;
   
   PaletteRotation(int minBrightness=0) {
     this->minBrightness = minBrightness;
