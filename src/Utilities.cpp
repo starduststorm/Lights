@@ -107,11 +107,13 @@ void PrintColor(Color c)
   Serial.print(")");
 }
 
+#if USE_STL
 std::string colorDesc(CRGB c) {
   char buf[16];
   snprintf(buf, 16, "(%u, %u, %u)", c.r, c.g, c.b);
   return std::string(buf);
 }
+#endif
 
 static int vasprintf(char** strp, const char* fmt, va_list ap) {
   va_list ap2;
@@ -136,10 +138,10 @@ void logf(const char *format, ...)
   vasprintf(&buf, format, argptr);
   va_end(argptr);
   Serial.println(buf ? buf : "LOGF MEMORY ERROR");
+  free(buf);
 #if DEBUG
   Serial.flush();
 #endif
-  free(buf);
 }
 
 int mod_wrap(int x, int m) {

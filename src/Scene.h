@@ -277,7 +277,7 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0), pale
 #if MEGA_WS2811
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
 #elif FAST_LED
-#if DOUBLE_STRAND
+#ifdef FAST_LED_PIN_2
   LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_1, RGB>(leds, LED_COUNT/2, LED_COUNT/2);
   LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_2, RGB>(leds, LED_COUNT/2);
 #else

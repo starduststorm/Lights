@@ -18,7 +18,6 @@ public:
   
   void reset();
 
-  Color palette[];
 private:
   unsigned long duration; // in millis
   unsigned int count;

@@ -1,6 +1,8 @@
 
 #include "Config.h"
+#if USE_STL
 #include <string>
+#endif
 #include <FastLED.h>
 
 #if DEBUG
@@ -25,7 +27,9 @@ int get_free_memory();
 #endif
 
 void PrintColor(Color c);
+#if USE_STL
 std::string colorDesc(CRGB c);
+#endif
 
 void logf(const char *format, ...);
 

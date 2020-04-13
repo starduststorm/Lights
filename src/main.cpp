@@ -23,7 +23,6 @@
 // -----------------------------------------
 //
 #include <Wire.h>
-static const unsigned int LED_COUNT = 100;
 
 #include <SPI.h>
 
@@ -47,7 +46,11 @@ static bool serialTimeout = false;
 // static unsigned long setupDoneTime;
 
 void setup() {
-  Serial.begin(57600);
+  int serialBaud = 57600;
+#if SERIAL_BAUD
+  serialBaud = SERIAL_BAUD;
+#endif
+  Serial.begin(serialBaud);
 #if WAIT_FOR_SERIAL
   long setupStart = millis();
   while (!Serial) {
@@ -97,7 +100,12 @@ void loop()
   
   if (mils - lastPrint > 4000) {
     float framerate = 1000.0 * framesPast / (mils - lastPrint);
+#if MEGA
+    // mega can't print floats? lol
+    logf("Framerate: %i", (int)framerate);
+#else
     logf("Framerate: %0.2f", framerate);
+#endif
     lastPrint = mils;
     framesPast = 0;
   } else {

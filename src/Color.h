@@ -2,7 +2,9 @@
 #define COLOR_H
 
 #include <FastLED.h>
+#if USE_STL
 #include <string>
+#endif
 
 struct Color {
   byte red;
@@ -33,13 +35,14 @@ struct Color {
     blue = b;
     filler = fill;
   }
-
+#if USE_STL
   std::string description() {
     char buf[16];
     snprintf(buf, 16, "(%u, %u, %u)", red, green, blue);
     std::string desc = buf;
     return desc;
   }
+#endif
 };
 typedef struct Color Color;
 
