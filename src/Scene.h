@@ -18,9 +18,7 @@ typedef enum {
   
   ModeLightningBugs,
   ModeParity,
-#if ARDUINO_DUE || TEENSY
   ModeInterferingWaves,
-#endif
   ModeRainbow,
   ModeAccumulator,
   ModeCount,
@@ -76,7 +74,7 @@ private:
 
   // "Follow" convenience counter
   float _followLeader=0;
-  float _followSpeed; // number of lights lights / s that the _followLeader moves
+  int _followSpeed; // number of lights lights / s that the _followLeader moves
   bool _directionIsReversed;
   
   // Mode specific data
@@ -105,12 +103,12 @@ public:
   Mode randomMode();
 };
 
-float getBrightness()
+uint8_t getBrightness()
 {
   if (!kHasDeveloperBoard) {
     return DEFAULT_BRIGHNESS;
   }
-  static float brightnessAdjustment = 1.0;
+  static uint8_t brightnessAdjustment = 0xFF;
 #if DEVELOPER_BOARD
   static int brightMin = 200;
   static int brightMax = 900;
@@ -121,65 +119,31 @@ float getBrightness()
   if (val > brightMax) {
     brightMax = val;
   }
+  val = map(val, 0, 1024, 0, 0xFF);
   
-  static int lastChangeVal = -1.0;
-  if (abs(val - lastChangeVal) > 40) {
-    brightnessAdjustment = (val - brightMin) / (float)brightMax;
-    lastChangeVal = val;
+  if (abs(val - brightnessAdjustment) > 15) {
+    brightnessAdjustment = val;
   }
 #endif
   return brightnessAdjustment;
 }
 
-Color _adjustColorForScene(Color c, float soundMultiplier, float brightness)
+Color _adjustColorForScene(Color c, uint8_t brightness)
 {
-  float red = c.red, green = c.green, blue = c.blue;
-  
-  if (soundMultiplier != 1.0) {
-    red *= soundMultiplier;
-    green *= soundMultiplier;
-    blue *= soundMultiplier;
+  if (brightness != 0xFF) {
+    uint8_t dimmingFactor = dim8_raw(brightness);
+
+    c.red = scale8(c.red, dimmingFactor);
+    c.green = scale8(c.green, dimmingFactor);
+    c.blue = scale8(c.blue, dimmingFactor);
   }
   
-  if (brightness < 0.95) {
-    red *= brightness;
-    green *= brightness;
-    blue *= brightness;
-  }
-  red = min(red, 255);
-  green = min(green, 255);
-  blue = min(blue, 255);
-
-  c.red = red;
-  c.green = green;
-  c.blue = blue;
-
   return c;
 }
 
 void Scene::updateStrand()
 {
-  float brightnessAdjustment = getBrightness();
-  
-  float soundMultiplier = 1.0;
-#ifdef SOUND_DIAL
-  bool useSound = false;
-  float soundSensitivity = PotentiometerRead(SOUND_DIAL, 10, 204);
-  useSound = soundSensitivity < 200;
-  
-  if (useSound) {
-    const int pin = 15;
-    unsigned int soundReading = analogRead(pin);
-    if (soundReading > _soundPeak) {
-      _soundPeak = soundReading;
-    } else {
-      _soundPeak *= 0.9;
-    }
-    soundMultiplier = 0.5 + _soundPeak / soundSensitivity;
-  } else {
-    _soundPeak = 0;
-  } 
-#endif
+  uint8_t brightnessAdjustment = getBrightness();
   
   // Update per-pixel
 #if ARDUINO_TCL
@@ -189,9 +153,9 @@ void Scene::updateStrand()
     Light *light = _lights[i];
     int red = light->color.red, green = light->color.green, blue = light->color.blue;
     
-    Color color = _adjustColorForScene(light->color, soundMultiplier, brightnessAdjustment);
-    Color targetColor = _adjustColorForScene(light->targetColor, soundMultiplier, brightnessAdjustment);
-    Color sourceColor = _adjustColorForScene(light->originalColor, soundMultiplier, brightnessAdjustment);
+    Color color = _adjustColorForScene(light->color, brightnessAdjustment);
+    Color targetColor = _adjustColorForScene(light->targetColor, brightnessAdjustment);
+    Color sourceColor = _adjustColorForScene(light->originalColor, brightnessAdjustment);
     
     // FIXME: comment this
     // Nevermind, this is just a lame excuse for actual low-brightness dithering by clipping off low values if the source or target color has the same number of lit subpixels.
@@ -394,7 +358,6 @@ void Scene::setMode(Mode mode)
       case ModeLightningBugs:
         transitionAll(kNightColor, 1200);
         break;
-#if ARDUINO_DUE || TEENSY
       case ModeInterferingWaves:
         automaticColorsCount = kInterferringWavesNum;
         _sceneVariation = (float *)malloc(automaticColorsCount * sizeof(float));
@@ -405,7 +368,6 @@ void Scene::setMode(Mode mode)
         automaticColorsDuration = 5000;
         _colorScratch = (Color *)malloc(_lightCount * sizeof(Color));
         break;
-#endif
       case ModeWaves: {
         automaticColorsCount = fast_rand(2); // palettize half the time
         logf("  Picked %s", automaticColorsCount == 1 ? "1 color" : "palette");
@@ -447,7 +409,11 @@ void Scene::setMode(Mode mode)
 void Scene::tick()
 {
   unsigned long long time = millis();
+#if DEVELOPER_BOARD
   unsigned long long tickTime = MAX(1, (time - _lastTick) * _globalSpeed);
+#else 
+  unsigned long long tickTime = MAX(1, (time - _lastTick));
+#endif
   _lastTick = time;
 
   // Fade transitions
@@ -583,7 +549,11 @@ void Scene::tick()
     case ModeWaves: {
       const unsigned int waveLength = (float)*_sceneVariation;
       // Needs to fade out over less than half a wave, so there are some off in the middle.
-      const int fadeDuration = 1000 * (waveLength / 2.0) / (_followSpeed * _globalSpeed);
+#if DEVELOPER_BOARD
+      const int fadeDuration = 1000 * (waveLength / 2) / (_followSpeed * _globalSpeed);
+#else
+      const int fadeDuration = 1000 * (waveLength / 2) / (_followSpeed);
+#endif
       
       Color waveColor = kBlackColor;;
       if (_colorMaker->getColorCount() > 0) {
@@ -623,7 +593,6 @@ void Scene::tick()
       break;
     }
     
-#if ARDUINO_DUE || TEENSY
     case ModeInterferingWaves: {
       const int waveLength = 18;
       const int halfWave = waveLength / 2;
@@ -669,7 +638,7 @@ void Scene::tick()
 
             if (inModeTransition) {
               // Fade from previous mode
-              color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, (float)modeTime / kFadeTime * 0xFF, 0xFF);
+              color = ColorWithInterpolatedColors(_lights[lightIndex]->color, color, 0xFF * modeTime / kFadeTime, 0xFF);
             }
             
             _lights[lightIndex]->color = color;
@@ -680,7 +649,7 @@ void Scene::tick()
       for (unsigned int i = 0; i < _lightCount; ++i) {
         if (ColorIsEqualToColor(_colorScratch[i], kBlackColor)) {
           if (inModeTransition) {
-            _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, (float)modeTime / kFadeTime * 0xFF, 0xFF);
+            _lights[i]->color = ColorWithInterpolatedColors(_lights[i]->color, kBlackColor, 0xFF * modeTime / kFadeTime, 0xFF);
           } else {
             _lights[i]->color = kBlackColor;
           }
@@ -688,7 +657,6 @@ void Scene::tick()
       }
       break;
     }
-#endif
     
     case ModeParity: {
       paletteRotation.tick();
@@ -729,8 +697,13 @@ void Scene::tick()
       
       paletteRotation.tick();
       
+  #if DEVELOPER_BOARD
       const unsigned int kPingInterval = 30000 / _lightCount / _globalSpeed;
       const unsigned int kBlurInterval = 50 / _globalSpeed;
+  #else
+      const unsigned int kPingInterval = 30000 / _lightCount;
+      const unsigned int kBlurInterval = 50;
+  #endif
       if (time - _timeMarker > kPingInterval) {
         unsigned int ping = fast_rand(_lightCount);
         Color c = kBlackColor;
@@ -779,10 +752,9 @@ void Scene::tick()
             }
           }
           
-          // 
           c.red *= 0.92 * multiplier;
           c.green *= 0.92 * multiplier;
-          c.blue *= 0.92 *multiplier;
+          c.blue *= 0.92 * multiplier;
           
           _lights[target]->transitionToColor(c, 200);
         }
@@ -867,10 +839,10 @@ void Scene::tick()
     setMode(nextMode);
   } else {
 #endif
-    float newGlobalSpeed = 1.0;
 #if DEVELOPER_BOARD
+    float newGlobalSpeed = 1.0;
     newGlobalSpeed = (kHasDeveloperBoard ? PotentiometerReadf(SPEED_DIAL, kSpeedMin, kSpeedMax) : 1.0);
-#endif
+
     if (abs(newGlobalSpeed - _globalSpeed) > 0.06) {
       logf("New global speed = %f", newGlobalSpeed);
       _globalSpeed = newGlobalSpeed;
@@ -882,11 +854,12 @@ void Scene::tick()
         logf("Switching out of mode %i due to speed. New mode = %i", (int)_mode, (int)newMode);
         setMode(newMode);
       }
-#ifndef TEST_MODE
+#endif
     }
 #endif
-#endif
+#ifndef TEST_MODE
   }
+#endif
 
 #if DEVELOPER_BOARD
   // This button reads as low state on the first loop for some reason, so start the flag as true to ignore the pres

@@ -115,6 +115,7 @@ std::string colorDesc(CRGB c) {
 }
 #endif
 
+#if TEENSY
 static int vasprintf(char** strp, const char* fmt, va_list ap) {
   va_list ap2;
   va_copy(ap2, ap);
@@ -129,9 +130,11 @@ static int vasprintf(char** strp, const char* fmt, va_list ap) {
   *strp = (char*)malloc(size * sizeof(char));
   return vsnprintf(*strp, size, fmt, ap);
 }
+#endif
 
 void logf(const char *format, ...)
 {
+#if TEENSY // this eventually yields memory errors on mega, not sure why
   va_list argptr;
   va_start(argptr, format);
   char *buf;
@@ -139,6 +142,14 @@ void logf(const char *format, ...)
   va_end(argptr);
   Serial.println(buf ? buf : "LOGF MEMORY ERROR");
   free(buf);
+#else
+  va_list argptr;
+  va_start(argptr, format);
+  char buf[100];
+  vsnprintf(buf, 100, format, argptr);
+  va_end(argptr);
+  Serial.println(buf);
+#endif
 #if DEBUG
   Serial.flush();
 #endif

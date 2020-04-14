@@ -21,7 +21,7 @@
 /* Options */
 // #define TEST_MODE (ModeParity)
 #define MODE_TIME (80)
-#define DEFAULT_BRIGHNESS 1.0
+#define DEFAULT_BRIGHNESS 0xFF
 
 #if DEVELOPER_BOARD
 static const bool kHasDeveloperBoard = true;
@@ -36,7 +36,6 @@ static const bool kHasDeveloperBoard = false;
 #define BRIGHTNESS_DIAL TCL_POT3
 #define MODE_DIAL TCL_POT1
 #define SPEED_DIAL TCL_POT4
-//#define SOUND_DIAL TCL_POT2
 #endif
 
 #endif // CONFIG_H
