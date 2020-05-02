@@ -15,7 +15,6 @@ typedef enum {
   ModeBlueFire,
   ModeGreenFire,
   ModePinkFire,
-  
   ModeLightningBugs,
   ModeParity,
   ModeInterferingWaves,
@@ -31,6 +30,7 @@ typedef enum {
 
 static const bool kLightningBugsIsEasterEgg = false;
 
+#if DEVELOPER_BOARD
 struct SpeedRange {
   float low;
   float high;
@@ -51,6 +51,7 @@ static const float kSpeedMin = 0.4;
 static const SpeedRange kSpeedNormalRange = SpeedRangeMake(kSpeedNormalMin, kSpeedMax);
 
 static SpeedRange kModeRanges[ModeCount] = {0};
+#endif
 
 static const unsigned int kInterferringWavesNum = LED_COUNT / 20;
 
@@ -92,7 +93,9 @@ private:
   void transitionAll(Color c, int durationMillis);
   
   void updateStrand();
+#if DEVELOPER_BOARD
   SpeedRange speedRangeForMode(Mode mode);
+#endif
 
 public:
   void applyAll(Color c);
@@ -215,21 +218,25 @@ void Scene::transitionAll(Color c, int durationMillis)
   }
 }
 
+#if DEVELOPER_BOARD
 void setSpeedRangeForMode(SpeedRange speedRange, Mode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
     kModeRanges[mode] = speedRange;
   }
 }
+#endif
 
 Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0), paletteRotation(10)
 { 
+#if DEVELOPER_BOARD
   setSpeedRangeForMode(SpeedRangeMake(0.7, 1.3), ModeFire);
   setSpeedRangeForMode(speedRangeForMode(ModeFire), ModeBlueFire);
   setSpeedRangeForMode(speedRangeForMode(ModeFire), ModePinkFire);
   setSpeedRangeForMode(speedRangeForMode(ModeFire), ModeGreenFire);
   
   setSpeedRangeForMode(SpeedRangeMake(kSpeedMin, kSpeedMin + 0.2), ModeLightningBugs);
+#endif
   
   _lightCount = lightCount;
   _lights = new Light*[_lightCount];
@@ -264,6 +271,7 @@ Scene::~Scene()
   delete[] _lights;
 }
 
+#if DEVELOPER_BOARD
 SpeedRange Scene::speedRangeForMode(Mode mode)
 {
   if (mode < ARRAY_SIZE(kModeRanges)) {
@@ -275,6 +283,7 @@ SpeedRange Scene::speedRangeForMode(Mode mode)
   }
   return kSpeedNormalRange;
 }
+#endif
 
 Mode Scene::randomMode()
 {
@@ -316,6 +325,7 @@ Mode Scene::randomMode()
 
 void Scene::setMode(Mode mode)
 {
+  logf("Set mode %i->%i", _mode, mode);
   if (mode != _mode) {
     // Transition away from old mode
     switch (_mode) {
@@ -342,7 +352,7 @@ void Scene::setMode(Mode mode)
     
     free(_leaders);
     _leaders = NULL;
-    
+
     // Initialize new mode
     for (unsigned int i = 0; i < _lightCount; ++i) {
       _lights[i]->modeState = 0;
@@ -370,10 +380,12 @@ void Scene::setMode(Mode mode)
         break;
       case ModeWaves: {
         automaticColorsCount = fast_rand(2); // palettize half the time
-        logf("  Picked %s", automaticColorsCount == 1 ? "1 color" : "palette");
+        logf("  Waves submode %s", automaticColorsCount == 1 ? "1 color" : "palette");
         automaticColorsDuration = 6000;
         
-        paletteRotation.secondsPerPalette = 20;
+        paletteRotation.secondsPerPalette = 20; 
+        paletteRotation.minBrightness = 20;
+
         _sceneVariation = new float(fast_rand(3) == 0 ? 50 : 20); // wave size, assumes number of lights is roughly divisible by 50
         break;
       case ModeRainbow:
@@ -555,7 +567,7 @@ void Scene::tick()
       const int fadeDuration = 1000 * (waveLength / 2) / (_followSpeed);
 #endif
       
-      Color waveColor = kBlackColor;;
+      Color waveColor = kBlackColor;
       if (_colorMaker->getColorCount() > 0) {
         waveColor = _colorMaker->getColor(0);
       }
@@ -751,7 +763,7 @@ void Scene::tick()
               ++count;
             }
           }
-          
+
           c.red *= 0.92 * multiplier;
           c.green *= 0.92 * multiplier;
           c.blue *= 0.92 * multiplier;

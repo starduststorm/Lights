@@ -82,7 +82,7 @@ unsigned int fast_rand(unsigned int upperBound)
 extern int __bss_end;
 extern void *__brkval;
 
-#if DEBUG && !ARDUINO_DUE
+#if DEBUG && MEGA
 int get_free_memory()
 {
   int free_memory;
@@ -145,8 +145,8 @@ void logf(const char *format, ...)
 #else
   va_list argptr;
   va_start(argptr, format);
-  char buf[100];
-  vsnprintf(buf, 100, format, argptr);
+  char buf[127];
+  vsnprintf(buf, 127, format, argptr);
   va_end(argptr);
   Serial.println(buf);
 #endif

@@ -42,7 +42,9 @@
 
 static Scene *gLights;
 
+#if WAIT_FOR_SERIAL
 static bool serialTimeout = false;
+#endif
 // static unsigned long setupDoneTime;
 
 void setup() {
@@ -59,7 +61,13 @@ void setup() {
       break;
     }
   }
-  logf("begin - waited %0.2fs for Serial", (millis() - setupStart) / 1000.);
+  #if MEGA
+    // mega can't print floats? lol
+    logf("^^^ begin - waited %is for Serial", (int)((millis() - setupStart) / 1000.));
+#else
+    logf("^^^ begin - waited %0.2fs for Serial", (millis() - setupStart) / 1000.);
+#endif
+  
 #elif DEBUG
   delay(2000);
 #endif
@@ -94,31 +102,31 @@ void setup() {
 void loop()
 {
   static unsigned int framesPast = 0;
-  static unsigned long lastPrint = 0;
+  static unsigned long lastFrameratePrint = 0;
   
   unsigned long mils = millis();
   
-  if (mils - lastPrint > 4000) {
-    float framerate = 1000.0 * framesPast / (mils - lastPrint);
+  if (mils - lastFrameratePrint > 4000) {
+    float framerate = 1000.0 * framesPast / (mils - lastFrameratePrint);
 #if MEGA
     // mega can't print floats? lol
     logf("Framerate: %i", (int)framerate);
 #else
     logf("Framerate: %0.2f", framerate);
 #endif
-    lastPrint = mils;
+    lastFrameratePrint = mils;
     framesPast = 0;
   } else {
     framesPast++;
   }
   
-#if DEBUG && !ARDUINO_DUE
-  static int loopCount = 0;
-  if (loopCount++ > 1000) {
+#if DEBUG && MEGA
+  static unsigned long lastMemoryPrint = 0;
+  if (mils - lastMemoryPrint > 10000) {
     Serial.print("Memory free: ");
     Serial.print(get_free_memory());
     Serial.println(" bytes");
-    loopCount = 0;
+    lastMemoryPrint = mils;
   }
 #endif
   gLights->tick();

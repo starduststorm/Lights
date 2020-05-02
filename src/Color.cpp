@@ -23,11 +23,6 @@ bool ColorIsEqualToColor(Color c1, Color c2)
   return (c1.red == c2.red && c1.green == c2.green && c1.blue == c2.blue);
 }
 
-bool ColorIsNoColor(Color c)
-{
-  return c.filler != 0;
-}
-
 Color ColorWithInterpolatedColors(Color c1, Color c2, uint8_t transition, uint8_t intensity)
 {
   byte r, g, b;

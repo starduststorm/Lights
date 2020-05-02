@@ -26,6 +26,7 @@ private:
   Color *colorTargets = NULL;
   unsigned long *colorStarts = NULL;
   Color *colorCache = NULL;
+  bool *colorCacheHits = NULL;
 };
 
 ColorMaker::ColorMaker()
@@ -49,12 +50,14 @@ void ColorMaker::prepColors(unsigned int count, unsigned long duration) // durat
     colorTargets = (Color *)malloc(count * sizeof(Color));
     colorStarts = (unsigned long *)malloc(count * sizeof(unsigned long));
     colorCache = (Color *)malloc(count * sizeof(Color));
-    
+    colorCacheHits = (bool *)malloc(count * sizeof(bool));
+
     for (unsigned int i = 0; i < count; ++i) {
       colors[i] = NamedRainbow.randomColor();
       colorTargets[i] = NamedRainbow.randomColor();
       colorStarts[i] = millis();
-      colorCache[i] = kNoColor;
+      colorCache[i] = kBlackColor;
+      colorCacheHits[i] = false;
     }
   }
 }
@@ -66,11 +69,14 @@ uint8_t ColorMaker::fadeProgress(int index) {
 
 Color ColorMaker::getColor(unsigned int index)
 {
+#if DEBUG_ASSERT
   if (index >= this->count) {
     logf("GETTING OUT OF BOUNDS COLOR at %u >= %u", index, this->count);
   }
-  if (ColorIsNoColor(colorCache[index])) {
+#endif
+  if (colorCacheHits[index] == false) {
     colorCache[index] = ColorWithInterpolatedColors(colors[index], colorTargets[index], fadeProgress(index), 0xFF);
+    colorCacheHits[index] = true;
   }
   return colorCache[index];
 }
@@ -84,7 +90,8 @@ void ColorMaker::tick()
       colors[i] = colorTargets[i];
       colorTargets[i] = NamedRainbow.randomColor();
     }
-    colorCache[i] = kNoColor;
+    colorCache[i] = kBlackColor;
+    colorCacheHits[i] = false;
   }
 }
   
@@ -98,6 +105,8 @@ void ColorMaker::reset()
   colorStarts = NULL;
   free(colorCache);
   colorCache = NULL;
+  free(colorCacheHits);
+  colorCacheHits = NULL;
 
   count = 0;
 }
