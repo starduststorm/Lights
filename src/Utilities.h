@@ -34,3 +34,37 @@ std::string colorDesc(CRGB c);
 void logf(const char *format, ...);
 
 int mod_wrap(int x, int m);
+
+class FrameCounter {
+  private:
+    long lastPrint = 0;
+    long frames = 0;
+    long lastClamp = 0;
+  public:
+    long printInterval = 2000;
+    void tick() {
+      unsigned long mil = millis();
+      long elapsed = mil - lastPrint;
+      if (elapsed > printInterval) {
+        if (lastPrint != 0) {
+          float framerate = frames / (float)elapsed * 1000;
+#if MEGA
+          // mega can't print floats? lol
+          logf("Framerate: %i", (int)framerate);
+#else
+          logf("Framerate: %f", framerate);
+#endif
+        }
+        frames = 0;
+        lastPrint = mil;
+      }
+      ++frames;
+    }
+    void clampToFramerate(int fps) {
+      int delayms = 1000 / fps - (millis() - lastClamp);
+      if (delayms > 0) {
+        delay(delayms);
+      }
+      lastClamp = millis();
+    }
+};

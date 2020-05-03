@@ -99,27 +99,14 @@ void setup() {
 #endif
 }
 
+FrameCounter fc;
+
 void loop()
 {
-  static unsigned int framesPast = 0;
-  static unsigned long lastFrameratePrint = 0;
+  fc.tick();
+  fc.clampToFramerate(120);
   
   unsigned long mils = millis();
-  
-  if (mils - lastFrameratePrint > 4000) {
-    float framerate = 1000.0 * framesPast / (mils - lastFrameratePrint);
-#if MEGA
-    // mega can't print floats? lol
-    logf("Framerate: %i", (int)framerate);
-#else
-    logf("Framerate: %0.2f", framerate);
-#endif
-    lastFrameratePrint = mils;
-    framesPast = 0;
-  } else {
-    framesPast++;
-  }
-  
 #if DEBUG && MEGA
   static unsigned long lastMemoryPrint = 0;
   if (mils - lastMemoryPrint > 10000) {
@@ -129,5 +116,6 @@ void loop()
     lastMemoryPrint = mils;
   }
 #endif
+
   gLights->tick();
 }
