@@ -4,12 +4,25 @@
 
 /* Hardware Configuration */
 #define ARDUINO_DUE 0
-#define DEVELOPER_BOARD 0
+
+#ifndef TCL_h
+// constants from TCL.h, the original Total Control Lighting library
+#define TCL_POT1 A0
+#define TCL_POT2 A1
+#define TCL_POT3 A2
+#define TCL_POT4 A3
+#define TCL_MOMENTARY1 4
+#define TCL_MOMENTARY2 5
+#define TCL_SWITCH1 6
+#define TCL_SWITCH2 7
+#endif
 
 // Strand/cpu types
 #define MEGA_WS2811   0  // triggers use of mega-specific assembly
 #define ARDUINO_TCL   0  // Total Control Lighting (tm)
+#ifndef FASTLED_PIXEL_TYPE
 #define FASTLED_PIXEL_TYPE WS2811
+#endif
 
 // AVR does not support e.g. std::string
 #define USE_STL TEENSY

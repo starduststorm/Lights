@@ -247,12 +247,16 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0), pale
   
 #if MEGA_WS2811
   ws2811Renderer = new WS2811Renderer(LED_COUNT);
+#elif ARDUINO_TCL
+  // nothing
 #elif FAST_LED
 #ifdef FAST_LED_PIN_2
   LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_1, RGB>(leds, LED_COUNT/2, LED_COUNT/2);
   LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_2, RGB>(leds, LED_COUNT/2);
-#else
+#elif FAST_LED_PIN_1
   LEDS.addLeds<FASTLED_PIXEL_TYPE, FAST_LED_PIN_1, RGB>(leds, LED_COUNT);
+#else
+  LEDS.addLeds<FASTLED_PIXEL_TYPE, RGB>(leds, LED_COUNT);
 #endif
   LEDS.setBrightness(0xFF);
 #endif
@@ -308,7 +312,7 @@ Mode Scene::randomMode()
 #else
     // Lightning bugs not allowed because we can't dial away from it
     if (mode == ModeLightningBugs) {
-      modeAllowed = false;
+      // modeAllowed = false;
     }
 #endif
     if (modeAllowed) {
@@ -439,7 +443,7 @@ void Scene::tick()
   if (kHasDeveloperBoard && digitalRead(TCL_SWITCH2) == LOW) {
     if (!startedOffFade) {
       for (unsigned int i = 0; i < _lightCount; ++i) {
-        _lights[i]->transitionToColor(kBlackColor, 1000 LightTransitionEaseInOut);
+        _lights[i]->transitionToColor(kBlackColor, 1000, LightTransitionEaseInOut);
       }
       startedOffFade = true;
     }

@@ -84,7 +84,20 @@ void setup() {
 #endif
   
 #if DEVELOPER_BOARD
+#if TCL_h
   TCL.setupDeveloperShield();
+#else
+  // cribbed from TCL.cpp
+  pinMode(TCL_MOMENTARY1, INPUT);
+  pinMode(TCL_MOMENTARY2, INPUT);
+  pinMode(TCL_SWITCH1, INPUT);
+  pinMode(TCL_SWITCH2, INPUT);
+
+  digitalWrite(TCL_MOMENTARY1, HIGH);
+  digitalWrite(TCL_MOMENTARY2, HIGH);
+  digitalWrite(TCL_SWITCH1, HIGH);
+  digitalWrite(TCL_SWITCH2, HIGH);
+#endif
 #endif
   
   fast_srand();
