@@ -37,8 +37,13 @@
 #include <TCL.h>
 #endif
 
+#if !SAMD
 #define UNCONNECTED_PIN_1 A9
 #define UNCONNECTED_PIN_2 A3
+#else
+#define UNCONNECTED_PIN_1 A4
+#define UNCONNECTED_PIN_2 A5
+#endif
 
 static Scene *gLights;
 
@@ -53,6 +58,7 @@ void setup() {
   serialBaud = SERIAL_BAUD;
 #endif
   Serial.begin(serialBaud);
+
 #if WAIT_FOR_SERIAL
   long setupStart = millis();
   while (!Serial) {
@@ -61,13 +67,9 @@ void setup() {
       break;
     }
   }
-  #if MEGA
-    // mega can't print floats? lol
-    logf("^^^ begin - waited %is for Serial", (int)((millis() - setupStart) / 1000.));
-#else
-    logf("^^^ begin - waited %0.2fs for Serial", (millis() - setupStart) / 1000.);
-#endif
-  
+  Serial.println("DONE WAITING");
+  logf("^^^ begin - waited %ims for Serial", millis() - setupStart);
+
 #elif DEBUG
   delay(2000);
 #endif
@@ -82,7 +84,7 @@ void setup() {
 #elif ARDUINO_TCL
   TCL.begin();
 #endif
-  
+
 #if DEVELOPER_BOARD
 #if TCL_h
   TCL.setupDeveloperShield();
@@ -119,8 +121,8 @@ void loop()
   fc.tick();
   fc.clampToFramerate(120);
   
-  unsigned long mils = millis();
 #if DEBUG && MEGA
+unsigned long mils = millis();
   static unsigned long lastMemoryPrint = 0;
   if (mils - lastMemoryPrint > 10000) {
     Serial.print("Memory free: ");

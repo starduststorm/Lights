@@ -59,8 +59,8 @@ class Scene {
 private:
   unsigned int _lightCount=0;
   Mode _mode;
-  unsigned long _modeStart=0;
-  unsigned long _lastTick=0;
+  uint32_t _modeStart=0;
+  uint32_t _lastTick=0;
   
   Light **_lights;
   
@@ -424,11 +424,11 @@ void Scene::setMode(Mode mode)
 
 void Scene::tick()
 {
-  unsigned long long time = millis();
+  uint32_t time = millis();
 #if DEVELOPER_BOARD
-  unsigned long long tickTime = MAX(1, (time - _lastTick) * _globalSpeed);
+  uint32_t tickTime = MAX(1, (time - _lastTick) * _globalSpeed);
 #else 
-  unsigned long long tickTime = MAX(1, (time - _lastTick));
+  uint32_t tickTime = MAX(1, (time - _lastTick));
 #endif
   _lastTick = time;
 
@@ -467,7 +467,6 @@ void Scene::tick()
     startedOffFade = false;
   }
 #endif
-  
   _followLeader += (_directionIsReversed ? -1 : 1) * (_followSpeed * tickTime / 1000.0);
   _followLeader = fmodf(_followLeader + _lightCount, _lightCount);
 
@@ -848,7 +847,7 @@ void Scene::tick()
   updateStrand();
   
 #ifndef TEST_MODE
-  if (time - _modeStart > (unsigned long long)MODE_TIME * 1000) {
+  if (time - _modeStart > (uint32_t)MODE_TIME * 1000) {
     Mode nextMode = randomMode();
     logf("Timed mode change to %i", (int)nextMode);
     _modeStart = time; // in case mode doesn't actually change here.

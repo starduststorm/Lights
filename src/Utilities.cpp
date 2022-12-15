@@ -1,6 +1,7 @@
+#include "stdarg.h"
 
-#include "Config.h"
 #include "Arduino.h"
+#include "Config.h"
 #include "Color.h"
 #include "Utilities.h"
 
@@ -115,13 +116,14 @@ std::string colorDesc(CRGB c) {
 }
 #endif
 
-#if TEENSY
+#if !MEGA
 static int vasprintf(char** strp, const char* fmt, va_list ap) {
   va_list ap2;
   va_copy(ap2, ap);
   char tmp[1];
   int size = vsnprintf(tmp, 1, fmt, ap2);
   if (size <= 0) {
+    Serial.println("vsnprintf fail");
     strp=NULL;
     return size;
   }
@@ -134,7 +136,7 @@ static int vasprintf(char** strp, const char* fmt, va_list ap) {
 
 void logf(const char *format, ...)
 {
-#if TEENSY // this eventually yields memory errors on mega, not sure why
+#if !MEGA // this eventually yields memory errors on mega, not sure why
   va_list argptr;
   va_start(argptr, format);
   char *buf;
