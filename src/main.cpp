@@ -37,8 +37,10 @@
 #include <TCL.h>
 #endif
 
-#define UNCONNECTED_PIN_1 A9
-#define UNCONNECTED_PIN_2 A3
+// #define UNCONNECTED_PIN_1 A9
+// #define UNCONNECTED_PIN_2 A3
+#define UNCONNECTED_PIN_1 A4
+#define UNCONNECTED_PIN_2 A5
 
 static Scene *gLights;
 
@@ -48,11 +50,16 @@ static bool serialTimeout = false;
 // static unsigned long setupDoneTime;
 
 void setup() {
+  delay(5000);
+
   int serialBaud = 57600;
 #if SERIAL_BAUD
   serialBaud = SERIAL_BAUD;
 #endif
   Serial.begin(serialBaud);
+
+  Serial.println("STARTUP TEST");
+
 #if WAIT_FOR_SERIAL
   long setupStart = millis();
   while (!Serial) {
@@ -61,13 +68,9 @@ void setup() {
       break;
     }
   }
-  #if MEGA
-    // mega can't print floats? lol
-    logf("^^^ begin - waited %is for Serial", (int)((millis() - setupStart) / 1000.));
-#else
-    logf("^^^ begin - waited %0.2fs for Serial", (millis() - setupStart) / 1000.);
-#endif
-  
+  Serial.println("DONE WAITING");
+  logf("^^^ begin - waited %ims for Serial", millis() - setupStart);
+
 #elif DEBUG
   delay(2000);
 #endif
@@ -82,7 +85,7 @@ void setup() {
 #elif ARDUINO_TCL
   TCL.begin();
 #endif
-  
+
 #if DEVELOPER_BOARD
 #if TCL_h
   TCL.setupDeveloperShield();
@@ -104,12 +107,15 @@ void setup() {
   randomSeed(lsb_noise(UNCONNECTED_PIN_1, 8 * sizeof(uint32_t)));
   random16_add_entropy(lsb_noise(UNCONNECTED_PIN_2, 8 * sizeof(uint16_t)));
   
+  Serial.println("starting scene");
+
   gLights = new Scene(LED_COUNT);
 #ifdef TEST_MODE
   gLights->setMode(TEST_MODE);
 #else
   gLights->setMode(gLights->randomMode());
 #endif
+Serial.println("SETUP DONE");
 }
 
 FrameCounter fc;
@@ -119,8 +125,8 @@ void loop()
   fc.tick();
   fc.clampToFramerate(120);
   
-  unsigned long mils = millis();
 #if DEBUG && MEGA
+unsigned long mils = millis();
   static unsigned long lastMemoryPrint = 0;
   if (mils - lastMemoryPrint > 10000) {
     Serial.print("Memory free: ");

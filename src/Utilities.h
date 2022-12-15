@@ -1,5 +1,3 @@
-
-#include "Config.h"
 #if USE_STL
 #include <string>
 #endif
@@ -48,11 +46,10 @@ class FrameCounter {
       if (elapsed > printInterval) {
         if (lastPrint != 0) {
           float framerate = frames / (float)elapsed * 1000;
-#if MEGA
-          // mega can't print floats? lol
-          logf("Framerate: %i", (int)framerate);
-#else
+#if PRINTF_FLOATS
           logf("Framerate: %f", framerate);
+#else
+          logf("Framerate: %i", (int)framerate);
 #endif
         }
         frames = 0;

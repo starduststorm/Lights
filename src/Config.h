@@ -3,7 +3,11 @@
 #define CONFIG_H
 
 /* Hardware Configuration */
-#define ARDUINO_DUE 0
+
+#if ARDUINOZERO
+// since we're using the native port of the "arduino zero", not the programming port
+#define Serial SerialUSB
+#endif
 
 #ifndef TCL_h
 // constants from TCL.h, the original Total Control Lighting library
@@ -17,19 +21,26 @@
 #define TCL_SWITCH2 7
 #endif
 
+#define xstr(s) str(s)
+#define str(s) #s
+
 // Strand/cpu types
 #define MEGA_WS2811   0  // triggers use of mega-specific assembly
 #define ARDUINO_TCL   0  // Total Control Lighting (tm)
 #ifndef FASTLED_PIXEL_TYPE
 #define FASTLED_PIXEL_TYPE WS2811
 #endif
+#pragma message ("Using " xstr(FASTLED_PIXEL_TYPE) " pixels")
 
 // AVR does not support e.g. std::string
-#define USE_STL TEENSY
+#define USE_STL (TEENSY || ARDUINOZERO)
+
+// Some platforms do not support printing floats
+#define PRINTF_FLOATS (!MEGA && !ARDUINOZERO)
 
 /* Logging */
-#define DEBUG 0
-#define WAIT_FOR_SERIAL 0
+#define DEBUG 1
+#define WAIT_FOR_SERIAL 1
 
 /* Options */
 // #define TEST_MODE (ModeParity)
@@ -43,6 +54,7 @@ static const bool kHasDeveloperBoard = false;
 #endif
 
 #define FAST_LED      (!ARDUINO_TCL)
+#define FASTLED_ALLOW_INTERRUPTS 0
 
 /* For Developer Board */
 #if DEVELOPER_BOARD
