@@ -1,3 +1,11 @@
 .DS_Store
+*.bak
+*cache
+*.prelayout
+*.kicad_pcb-bak
+*.kicad_prl
+*.sch-bak
+*.layoutbak
 .pio
 .vscode
+*-backups
