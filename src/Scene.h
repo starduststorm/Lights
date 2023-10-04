@@ -258,6 +258,7 @@ Scene::Scene(unsigned int lightCount) : _mode((Mode)-1), _globalSpeed(1.0), pale
 #else
   LEDS.addLeds<FASTLED_PIXEL_TYPE, RGB>(leds, LED_COUNT);
 #endif
+  // LEDS.setCorrection(0xFF9090); // edit as needed per strand deployment
   LEDS.setBrightness(0xFF);
 #endif
    
